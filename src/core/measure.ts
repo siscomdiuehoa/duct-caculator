@@ -87,9 +87,12 @@ export function loopNormal(loop: Vec3[]): Vec3 {
  * Each edge moves outwards by the width and neighbouring edges meet in a mitre, which gives
  * square corners on rectangles and a concentric ring on round collars.
  */
+/** The openings that carry a flange. */
+export const flangedOpenings = (model: Model): Vec3[][] => model.openings.filter((_, k) => !model.bare?.includes(k));
+
 export function flanges(model: Model, width: number): Panel[] {
   if (!(width > 0)) return [];
-  return model.openings.map((loop, k) => {
+  return flangedOpenings(model).map((loop, k) => {
     const n = loopNormal(loop);
     const m = loop.length;
     const centre = loop.reduce<Vec3>((c, p) => [c[0] + p[0] / m, c[1] + p[1] / m, c[2] + p[2] / m], [0, 0, 0]);
@@ -117,5 +120,5 @@ export function flanges(model: Model, width: number): Panel[] {
 
 /** Total length of flange profile needed: the perimeter of every opening, in mm. */
 export function flangeLength(model: Model): number {
-  return model.openings.reduce((s, loop) => s + loop.reduce((t, c, i) => t + dist(c, loop[(i + 1) % loop.length]), 0), 0);
+  return flangedOpenings(model).reduce((s, loop) => s + loop.reduce((t, c, i) => t + dist(c, loop[(i + 1) % loop.length]), 0), 0);
 }

@@ -28,6 +28,8 @@ export interface Model {
   dims: Dim[];
   /** Open ends, each as four corners in loop order; a flange frames each one. */
   openings: Vec3[][];
+  /** Indices of openings that take no flange, such as a diffuser neck or a collar for flexible duct. */
+  bare?: number[];
 }
 
 export interface ParamDef {
