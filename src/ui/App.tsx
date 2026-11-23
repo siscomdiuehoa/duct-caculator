@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toDxf } from '../core/dxf';
 import { FITTINGS, defaults, getFitting } from '../core/fittings';
-import { fromJson, newDesign, toCsv, toJson, UNITS, type Design, type Unit } from '../core/io';
-import { area, weightKg } from '../core/measure';
+import { DEFAULT_FLANGE, fromJson, newDesign, toCsv, toJson, UNITS, type Design, type Unit } from '../core/io';
+import { area, flangeLength, weightKg } from '../core/measure';
 import type { Model } from '../core/types';
 import { translate, type Lang } from '../i18n';
 import { Viewer3D, type Preset } from './Viewer3D';
@@ -78,7 +78,7 @@ function Field({ label, value, factor, step, suffix, min, max, errText, onChange
     if (t.trim() !== '' && Number.isFinite(v)) onChange(v * factor);
   };
   const bump = (dir: number) => {
-    const next = Math.max(step, +(value / factor + dir * step).toFixed(6));
+    const next = Math.max(min / factor, +(value / factor + dir * step).toFixed(6));
     setText(trim(next));
     onChange(next * factor);
   };
@@ -128,7 +128,8 @@ export function App() {
 
   const fitting = getFitting(design.fitting)!;
   const problem =
-    fitting.validate(design.params) ?? (design.thickness > 0 && design.density > 0 ? null : 'err.range');
+    fitting.validate(design.params) ??
+    (design.thickness > 0 && design.density > 0 && design.flange >= 0 && design.flange <= 200 ? null : 'err.range');
 
   // Keep showing the last buildable shape while the input is invalid.
   const last = useRef<{ model: Model; design: Design } | null>(null);
@@ -142,10 +143,12 @@ export function App() {
   const dimText = (label: string, mm: number) => `${label} ${trim(mm / factor, 2)}`;
   const sqm = area(model) / 1e6;
   const kg = weightKg(model, current.design.thickness, current.design.density);
+  const flange = current.design.flange;
 
   const setParam = (key: string, v: number) => setDesign((d) => ({ ...d, params: { ...d.params, [key]: v } }));
   const open = (d: Design) => {
-    setDesign(d);
+    // Library entries saved before flanges existed have no flange width.
+    setDesign({ ...d, flange: Number.isFinite(d.flange) ? d.flange : DEFAULT_FLANGE });
     setPreset('iso');
     setFrame((n) => n + 1);
   };
@@ -154,7 +157,7 @@ export function App() {
   const exportAs = (kind: 'dxf' | 'csv' | 'json') => {
     const d = current.design;
     const file = `siscom-duct-${d.fitting}`;
-    if (kind === 'dxf') download(`${file}.dxf`, toDxf(model), 'application/dxf');
+    if (kind === 'dxf') download(`${file}.dxf`, toDxf(model, d.flange), 'application/dxf');
     if (kind === 'csv') download(`${file}.csv`, toCsv(d, t(`f.${d.fitting}`)), 'text/csv');
     if (kind === 'json') download(`${file}.json`, toJson(d), 'application/json');
   };
@@ -230,6 +233,7 @@ export function App() {
           </div>
           <Viewer3D
             model={model}
+            flange={flange}
             frameKey={`${current.design.fitting}:${frame}`}
             preset={preset}
             showDims={showDims}
@@ -348,7 +352,19 @@ export function App() {
                   errText={t('err.number')}
                   onChange={(v) => setDesign((d) => ({ ...d, density: v }))}
                 />
+                <Field
+                  label={t('flange')}
+                  value={design.flange}
+                  factor={1}
+                  step={5}
+                  suffix="mm"
+                  min={0}
+                  max={200}
+                  errText={t('err.number')}
+                  onChange={(v) => setDesign((d) => ({ ...d, flange: v }))}
+                />
               </div>
+              <p className="muted">{t('flange.note')}</p>
 
               <h2>{t('result')}</h2>
               <dl className="result">
@@ -364,6 +380,14 @@ export function App() {
                     {kg.toFixed(2)} <em>kg</em>
                   </dd>
                 </div>
+                {flange > 0 && (
+                  <div className="wide">
+                    <dt>{t('flange.length')}</dt>
+                    <dd>
+                      {(flangeLength(model) / 1e3).toFixed(2)} <em>m</em>
+                    </dd>
+                  </div>
+                )}
               </dl>
               <p className="muted">{t('note')}</p>
 
@@ -388,7 +412,7 @@ export function App() {
         </section>
 
         <section className="views">
-          <Views2D model={model} title={(id) => t(`view.${id}`)} dimText={(l, mm) => `${dimText(l, mm)} ${unit}`} />
+          <Views2D model={model} flange={flange} title={(id) => t(`view.${id}`)} dimText={(l, mm) => `${dimText(l, mm)} ${unit}`} />
         </section>
       </main>
     </>

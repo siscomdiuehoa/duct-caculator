@@ -1,5 +1,5 @@
-import { bounds, dist, edges } from './measure';
-import type { Model, Vec3 } from './types';
+import { bounds, dist, edges, flanges } from './measure';
+import type { Model, Panel, Vec3 } from './types';
 
 export type ViewId = 'front' | 'side' | 'plan';
 export type P2 = [number, number];
@@ -16,6 +16,8 @@ export interface Dim2D {
 export interface View2D {
   id: ViewId;
   segs: [P2, P2][];
+  /** Flange outlines; these may reach outside the 0..w, 0..h box. */
+  flangeSegs: [P2, P2][];
   dims: Dim2D[];
   w: number;
   h: number;
@@ -31,27 +33,32 @@ const AXES: Record<ViewId, [number, number, string, string]> = {
 export const VIEWS: ViewId[] = ['front', 'side', 'plan'];
 
 /** Orthographic wireframe of the model, shifted so its lower-left corner is (0, 0). */
-export function project(model: Model, id: ViewId): View2D {
+export function project(model: Model, id: ViewId, flange = 0): View2D {
   const [i, j, hn, vn] = AXES[id];
   const { min, max } = bounds(model);
   const to2 = (p: Vec3): P2 => [p[i] - min[i], p[j] - min[j]];
   const w = max[i] - min[i];
   const h = max[j] - min[j];
 
-  const seen = new Set<string>();
-  const segs: [P2, P2][] = [];
   const r = (n: number) => Math.round(n * 1000);
-  for (const [p, q] of edges(model)) {
-    const a = to2(p);
-    const b = to2(q);
-    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6) continue;
-    const ka = `${r(a[0])},${r(a[1])}`;
-    const kb = `${r(b[0])},${r(b[1])}`;
-    const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    segs.push([a, b]);
-  }
+  const outline = (panels: Panel[]): [P2, P2][] => {
+    const seen = new Set<string>();
+    const out: [P2, P2][] = [];
+    for (const [p, q] of edges(panels)) {
+      const a = to2(p);
+      const b = to2(q);
+      if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6) continue;
+      const ka = `${r(a[0])},${r(a[1])}`;
+      const kb = `${r(b[0])},${r(b[1])}`;
+      const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push([a, b]);
+    }
+    return out;
+  };
+  const segs = outline(model.panels);
+  const flangeSegs = outline(flanges(model, flange));
 
   const dims: Dim2D[] = [
     { a: [0, 0], b: [w, 0], label: hn, value: w, extent: 'h' },
@@ -68,5 +75,5 @@ export function project(model: Model, id: ViewId): View2D {
     seenDim.add(d.label);
     dims.push({ a, b, label: d.label, value });
   }
-  return { id, segs, dims, w, h };
+  return { id, segs, flangeSegs, dims, w, h };
 }

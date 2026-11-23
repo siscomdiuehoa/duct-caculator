@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toDxf } from './dxf';
 import { FITTINGS, defaults, getFitting } from './fittings';
 import { fromJson, newDesign, toCsv, toJson } from './io';
-import { area, weightKg } from './measure';
+import { area, flangeLength, flanges, weightKg } from './measure';
 import { project } from './project';
 
 const build = (id: string, p?: Record<string, number>) => {
@@ -26,6 +26,36 @@ describe('area and weight', () => {
   });
   it('tee 400x300x1000 with 300x250 branch', () => {
     expect(area(build('tee'))).toBeCloseTo(1_400_000 - 300 * 300 + 2 * 250 * 300 + 2 * 250 * 300, 6);
+  });
+});
+
+describe('flanges', () => {
+  it('frames every opening with a ring of the given width', () => {
+    const m = build('straight');
+    const rings = flanges(m, 30);
+    expect(rings).toHaveLength(2);
+    // 460 x 360 outer minus 400 x 300 inner, twice.
+    expect(area({ ...m, panels: rings })).toBeCloseTo(2 * (460 * 360 - 400 * 300), 6);
+    expect(flanges(build('tee'), 30)).toHaveLength(3);
+    expect(flanges(build('elbow90'), 30)).toHaveLength(2);
+  });
+  it('gives no flange for zero width and never changes the sheet area', () => {
+    expect(flanges(build('straight'), 0)).toEqual([]);
+    expect(area(build('straight'))).toBeCloseTo(1_400_000, 6);
+  });
+  it('measures the flange profile length as the opening perimeters', () => {
+    expect(flangeLength(build('straight'))).toBeCloseTo(2 * 1400, 6);
+    expect(flangeLength(build('tee'))).toBeCloseTo(2 * 1400 + 2 * (300 + 300), 6);
+    expect(flangeLength(build('elbow90'))).toBeCloseTo(2 * 1400, 6);
+  });
+  it('shows in the views without changing their extents', () => {
+    const plain = project(build('straight'), 'front');
+    const flanged = project(build('straight'), 'front', 30);
+    expect(plain.flangeSegs).toEqual([]);
+    expect(flanged).toMatchObject({ w: 400, h: 1000 });
+    const xs = flanged.flangeSegs.flat().map((p) => p[0]);
+    expect(Math.min(...xs)).toBeCloseTo(-30, 6);
+    expect(Math.max(...xs)).toBeCloseTo(430, 6);
   });
 });
 
@@ -68,13 +98,18 @@ describe('dxf', () => {
     const lines = dxf.split('\n');
     const xs: number[] = [];
     lines.forEach((l, i) => {
-      if (l === 'OUTLINE' && lines[i + 1] === '10') xs.push(+lines[i + 2], +lines[i + 8]);
+      if (l === 'OUTLINE' && lines[i + 3] === '10') xs.push(+lines[i + 4], +lines[i + 10]);
     });
     expect(Math.min(...xs)).toBe(0);
     // Front view is 400 wide; the side view sits to its right.
     expect(xs.filter((x) => x <= 400).length).toBeGreaterThan(0);
     expect(xs).toContain(400);
     expect(dxf).toContain('Z 1000');
+    expect(dxf).not.toContain('FLANGE');
+  });
+  it('puts flanges on their own yellow layer', () => {
+    expect(toDxf(build('straight'), 30)).toContain('LINE\n8\nFLANGE\n62\n2\n');
+    expect(toDxf(build('straight'), 30)).toContain('LINE\n8\nOUTLINE\n62\n4\n');
   });
 });
 
@@ -91,6 +126,13 @@ describe('json and csv', () => {
     d.params.W = -1;
     expect(() => fromJson(JSON.stringify(d))).toThrow();
     d.params.W = '400';
+    expect(() => fromJson(JSON.stringify(d))).toThrow();
+  });
+  it('reads files saved before flanges existed', () => {
+    const d = JSON.parse(toJson(newDesign('straight')));
+    delete d.flange;
+    expect(fromJson(JSON.stringify(d)).flange).toBe(30);
+    d.flange = -1;
     expect(() => fromJson(JSON.stringify(d))).toThrow();
   });
   it('writes weight to csv', () => {

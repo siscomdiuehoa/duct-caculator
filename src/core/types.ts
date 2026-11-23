@@ -17,6 +17,8 @@ export interface Dim {
 export interface Model {
   panels: Panel[];
   dims: Dim[];
+  /** Open ends, each as four corners in loop order; a flange frames each one. */
+  openings: Vec3[][];
 }
 
 export interface ParamDef {

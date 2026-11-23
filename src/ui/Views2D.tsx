@@ -3,21 +3,26 @@ import type { Model } from '../core/types';
 
 interface Props {
   model: Model;
+  flange: number;
   title: (id: View2D['id']) => string;
   dimText: (label: string, mm: number) => string;
 }
 
-function View({ view, dimText }: { view: View2D; dimText: Props['dimText'] }) {
+function View({ view, flange, dimText }: { view: View2D; flange: number; dimText: Props['dimText'] }) {
   const s = Math.max(view.w, view.h);
-  const pad = s * 0.24;
+  const pad = s * 0.24 + flange;
   const fs = s * 0.055;
-  const off = s * 0.08;
+  // Dimension lines sit outside the flange.
+  const off = s * 0.08 + flange;
   // SVG y grows downwards, drawings grow upwards.
   const y = (v: number) => view.h - v;
   return (
     <svg viewBox={`${-pad} ${-pad * 0.6} ${view.w + pad * 1.5} ${view.h + pad * 1.6}`} role="img">
       {view.segs.map(([a, b], i) => (
         <line key={i} className="outline" x1={a[0]} y1={y(a[1])} x2={b[0]} y2={y(b[1])} />
+      ))}
+      {view.flangeSegs.map(([a, b], i) => (
+        <line key={`f${i}`} className="flange" x1={a[0]} y1={y(a[1])} x2={b[0]} y2={y(b[1])} />
       ))}
       {view.dims.map((d) => {
         const text = dimText(d.label, d.value);
@@ -65,13 +70,13 @@ function View({ view, dimText }: { view: View2D; dimText: Props['dimText'] }) {
   );
 }
 
-export function Views2D({ model, title, dimText }: Props) {
+export function Views2D({ model, flange, title, dimText }: Props) {
   return (
     <>
       {VIEWS.map((id) => (
         <figure className="card view" key={id}>
           <figcaption>{title(id)}</figcaption>
-          <View view={project(model, id)} dimText={dimText} />
+          <View view={project(model, id, flange)} flange={flange} dimText={dimText} />
         </figure>
       ))}
     </>

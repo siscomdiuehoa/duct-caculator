@@ -9,7 +9,12 @@
   --warn: #b3261e;
   --warn-soft: #fbeceb;
   --dim: #c2410c;
-  --stage: linear-gradient(180deg, #f7f9f7, #dfe6e2);
+  /* Drawing colours follow AutoCAD: model-space background and colour index 4, 2, 3, 7. */
+  --cad-bg: #212830;
+  --cad-body: #00ffff;
+  --cad-flange: #ffff00;
+  --cad-dim: #00ff00;
+  --cad-text: #ffffff;
   --radius: 12px;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
@@ -26,7 +31,6 @@
     --warn: #f2a59f;
     --warn-soft: #3a211f;
     --dim: #fb923c;
-    --stage: linear-gradient(180deg, #232c2a, #151b1a);
   }
 }
 * {
@@ -198,7 +202,7 @@ select {
   position: relative;
   flex: 1;
   min-height: 0;
-  background: var(--stage);
+  background: var(--cad-bg);
   touch-action: none;
 }
 .viewer-canvas canvas {
@@ -211,7 +215,7 @@ select {
   place-items: center;
   padding: 24px;
   text-align: center;
-  color: var(--muted);
+  color: var(--cad-text);
 }
 .dim-labels {
   position: absolute;
@@ -224,9 +228,9 @@ select {
   position: absolute;
   left: 0;
   top: 0;
-  background: var(--card);
-  border: 1px solid var(--dim);
-  color: var(--dim);
+  background: var(--cad-bg);
+  border: 1px solid var(--cad-dim);
+  color: var(--cad-dim);
   border-radius: 6px;
   padding: 1px 6px;
   font-size: 12px;
@@ -338,6 +342,9 @@ select {
   border-radius: 10px;
   padding: 10px 12px;
 }
+.result .wide {
+  grid-column: 1 / -1;
+}
 .result dt {
   font-size: 12px;
   color: var(--muted);
@@ -417,32 +424,37 @@ select {
   display: block;
   width: 100%;
   max-height: 300px;
+  background: var(--cad-bg);
+  border-radius: 8px;
 }
 .view line,
 .view path {
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--cad-body);
   stroke-width: 1.4;
   vector-effect: non-scaling-stroke;
   stroke-linecap: round;
 }
+.view line.flange {
+  stroke: var(--cad-flange);
+}
 .view .dim path {
-  stroke: var(--dim);
+  stroke: var(--cad-dim);
   stroke-width: 1;
 }
 .view .dim text {
-  fill: var(--dim);
+  fill: var(--cad-dim);
   font-variant-numeric: tabular-nums;
 }
 .view line.mark {
-  stroke: var(--accent);
+  stroke: var(--cad-dim);
   stroke-width: 2.2;
 }
 .view .label {
-  fill: var(--accent);
+  fill: var(--cad-text);
   font-weight: 700;
   paint-order: stroke;
-  stroke: var(--card);
+  stroke: var(--cad-bg);
   stroke-width: 4px;
   vector-effect: non-scaling-stroke;
 }

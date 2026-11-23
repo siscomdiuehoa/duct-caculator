@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { bounds, edges, triangles } from '../core/measure';
+import { bounds, edges, flanges, triangles } from '../core/measure';
+import type { Panel } from '../core/types';
 import type { Model } from '../core/types';
 
 export type Preset = 'iso' | 'front' | 'side' | 'plan';
 
 interface Props {
   model: Model;
+  /** Flange width in mm; 0 draws none. */
+  flange: number;
   /** Changes when the camera should re-frame the model (fitting change or preset click). */
   frameKey: string;
   preset: Preset;
@@ -15,6 +18,9 @@ interface Props {
   dimText: (label: string, mm: number) => string;
   failText: string;
 }
+
+/** AutoCAD colour index values: 4 cyan body, 2 yellow flanges, 3 green dimensions, 7 white edges. */
+const ACI = { body: 0x00ffff, flange: 0xffff00, dim: 0x00ff00, edge: 0xffffff };
 
 const DIRS: Record<Preset, [number, number, number]> = {
   iso: [1, -1.25, 0.8],
@@ -32,7 +38,7 @@ interface Stage {
   render: () => void;
 }
 
-export function Viewer3D({ model, frameKey, preset, showDims, dimText, failText }: Props) {
+export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, failText }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
@@ -52,8 +58,8 @@ export function Viewer3D({ model, frameKey, preset, showDims, dimText, failText 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(32, 1, 1, 1e6);
     camera.up.set(0, 0, 1);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xa9b4b0, 1.5));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.9);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a6672, 1.1));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.3);
     camera.add(sun);
     sun.position.set(-0.4, 0.6, 1);
     scene.add(camera);
@@ -105,33 +111,38 @@ export function Viewer3D({ model, frameKey, preset, showDims, dimText, failText 
       (m.material as THREE.Material).dispose();
     }
     const flat = (pts: number[][]) => new THREE.Float32BufferAttribute(pts.flat(), 3);
-    const skin = new THREE.BufferGeometry();
-    skin.setAttribute('position', flat(triangles(model).flat()));
-    skin.computeVertexNormals();
-    s.group.add(
-      new THREE.Mesh(
-        skin,
-        new THREE.MeshStandardMaterial({
-          color: 0xdde5e7,
-          metalness: 0.05,
-          roughness: 0.6,
-          side: THREE.DoubleSide,
-          polygonOffset: true,
-          polygonOffsetFactor: 1,
-          polygonOffsetUnits: 1,
-        }),
-      ),
-    );
-    const wire = new THREE.BufferGeometry();
-    wire.setAttribute('position', flat(edges(model).flat()));
-    s.group.add(new THREE.LineSegments(wire, new THREE.LineBasicMaterial({ color: 0x2b3a3a })));
+    const solid = (panels: Panel[], color: number) => {
+      if (!panels.length) return;
+      const skin = new THREE.BufferGeometry();
+      skin.setAttribute('position', flat(triangles(panels).flat()));
+      skin.computeVertexNormals();
+      s.group.add(
+        new THREE.Mesh(
+          skin,
+          new THREE.MeshStandardMaterial({
+            color,
+            metalness: 0,
+            roughness: 0.7,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1,
+          }),
+        ),
+      );
+      const wire = new THREE.BufferGeometry();
+      wire.setAttribute('position', flat(edges(panels).flat()));
+      s.group.add(new THREE.LineSegments(wire, new THREE.LineBasicMaterial({ color: ACI.edge })));
+    };
+    solid(model.panels, ACI.body);
+    solid(flanges(model, flange), ACI.flange);
     if (showDims) {
       const dim = new THREE.BufferGeometry();
       dim.setAttribute('position', flat(model.dims.flatMap((d) => [d.a, d.b])));
-      s.group.add(new THREE.LineSegments(dim, new THREE.LineBasicMaterial({ color: 0xc2410c, depthTest: false })));
+      s.group.add(new THREE.LineSegments(dim, new THREE.LineBasicMaterial({ color: ACI.dim, depthTest: false })));
     }
     s.render();
-  }, [model, showDims]);
+  }, [model, flange, showDims]);
 
   // Frame the model when the fitting or the preset changes.
   useEffect(() => {

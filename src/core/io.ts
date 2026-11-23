@@ -1,5 +1,5 @@
 import { defaults, getFitting } from './fittings';
-import { area, weightKg } from './measure';
+import { area, flangeLength, weightKg } from './measure';
 import type { Params } from './types';
 
 export interface Design {
@@ -7,6 +7,8 @@ export interface Design {
   params: Params;
   thickness: number;
   density: number;
+  /** Flange width in mm; 0 means no flange. */
+  flange: number;
 }
 
 export const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4 } as const;
@@ -14,11 +16,12 @@ export type Unit = keyof typeof UNITS;
 
 export const DEFAULT_THICKNESS = 0.8;
 export const DEFAULT_DENSITY = 7850;
+export const DEFAULT_FLANGE = 30;
 
 export function newDesign(fitting: string): Design {
   const f = getFitting(fitting);
   if (!f) throw new Error('unknown fitting');
-  return { fitting, params: defaults(f), thickness: DEFAULT_THICKNESS, density: DEFAULT_DENSITY };
+  return { fitting, params: defaults(f), thickness: DEFAULT_THICKNESS, density: DEFAULT_DENSITY, flange: DEFAULT_FLANGE };
 }
 
 export function toJson(d: Design): string {
@@ -38,7 +41,10 @@ export function fromJson(text: string): Design {
     params[d.key] = o.params[d.key];
   }
   if (f.validate(params) || !positive(o.thickness) || !positive(o.density)) throw new Error('bad design');
-  return { fitting: f.id, params, thickness: o.thickness, density: o.density };
+  // Files saved before flanges existed have no flange field.
+  const flange = o.flange === undefined ? DEFAULT_FLANGE : o.flange;
+  if (typeof flange !== 'number' || !Number.isFinite(flange) || flange < 0) throw new Error('bad flange');
+  return { fitting: f.id, params, thickness: o.thickness, density: o.density, flange };
 }
 
 /** Result sheet as CSV (with BOM so Excel reads UTF-8). All lengths in mm. */
@@ -50,6 +56,8 @@ export function toCsv(d: Design, name: string): string {
     ...f.params.map((p): [string, number] => [`${p.key} (mm)`, d.params[p.key]]),
     ['thickness (mm)', d.thickness],
     ['density (kg/m3)', d.density],
+    ['flange width (mm)', d.flange],
+    ['flange length (m)', d.flange > 0 ? +(flangeLength(model) / 1e3).toFixed(3) : 0],
     ['area (m2)', +(area(model) / 1e6).toFixed(4)],
     ['weight (kg)', +weightKg(model, d.thickness, d.density).toFixed(3)],
   ];

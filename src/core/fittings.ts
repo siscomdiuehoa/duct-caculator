@@ -44,7 +44,8 @@ const straight: FittingDef = {
       { a: [W, 0, 0], b: [W, H, 0], label: 'H' },
       { a: [0, 0, 0], b: [0, 0, L], label: 'L' },
     ];
-    return { panels: sweep([rect(0, W, 0, H, 0), rect(0, W, 0, H, L)], SIDES), dims };
+    const ends = [rect(0, W, 0, H, 0), rect(0, W, 0, H, L)];
+    return { panels: sweep(ends, SIDES), dims, openings: ends };
   },
 };
 
@@ -64,10 +65,8 @@ const reducer: FittingDef = {
       { a: [dx + W2, dy, L], b: [dx + W2, dy + H2, L], label: 'H2' },
       { a: [Math.min(0, dx), 0, 0], b: [Math.min(0, dx), 0, L], label: 'L' },
     ];
-    return {
-      panels: sweep([rect(0, W1, 0, H1, 0), rect(dx, dx + W2, dy, dy + H2, L)], SIDES),
-      dims,
-    };
+    const ends = [rect(0, W1, 0, H1, 0), rect(dx, dx + W2, dy, dy + H2, L)];
+    return { panels: sweep(ends, SIDES), dims, openings: ends };
   },
 };
 
@@ -91,7 +90,11 @@ const elbow90: FittingDef = {
       { a: [0, 0, 0], b: [0, H, 0], label: 'H' },
       { a: [cx, 0, 0], b: at(R, Math.PI / 4, 0), label: 'R' },
     ];
-    return { panels: sweep(sections, ['front', 'inner', 'back', 'outer']), dims };
+    return {
+      panels: sweep(sections, ['front', 'inner', 'back', 'outer']),
+      dims,
+      openings: [sections[0], sections[ARC_STEPS]],
+    };
   },
 };
 
@@ -124,7 +127,17 @@ const tee: FittingDef = {
       { a: [xb, 0, z1], b: [xb, 0, z2], label: 'Wb' },
       { a: [W, 0, z2], b: [xb, 0, z2], label: 'Lb' },
     ];
-    return { panels, dims };
+    const openings: Vec3[][] = [
+      rect(0, W, 0, H, 0),
+      rect(0, W, 0, H, L),
+      [
+        [xb, 0, z1],
+        [xb, H, z1],
+        [xb, H, z2],
+        [xb, 0, z2],
+      ],
+    ];
+    return { panels, dims, openings };
   },
 };
 
