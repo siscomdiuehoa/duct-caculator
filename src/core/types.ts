@@ -1,10 +1,19 @@
 export type Vec3 = [number, number, number];
 
-/** A ruled sheet surface between two rails with the same number of points. */
+/**
+ * A sheet surface. By default it is ruled between two rails with the same number of points,
+ * outlined by both rails and the rungs at their two ends.
+ */
 export interface Panel {
   name: string;
   a: Vec3[];
   b: Vec3[];
+  /** Explicit triangles, for flat plates that are not a ruled strip. Replaces the ruled triangles. */
+  tris?: [Vec3, Vec3, Vec3][];
+  /** Explicit visible edges. Replaces the rails and rungs. */
+  lines?: [Vec3, Vec3][];
+  /** Rail indices whose rungs are visible edges (creases); defaults to the two ends. */
+  rungs?: number[];
 }
 
 /** A dimension line between two points; its value is the distance in mm. */
@@ -27,6 +36,10 @@ export interface ParamDef {
   min: number;
   max: number;
   step: number;
+  /** A whole count rather than a length, so it is never converted between units. */
+  kind?: 'count';
+  /** i18n key of the field label when it differs from p.<key>. */
+  label?: string;
 }
 
 export type Params = Record<string, number>;

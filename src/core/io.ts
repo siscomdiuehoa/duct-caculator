@@ -37,7 +37,8 @@ export function fromJson(text: string): Design {
   if (!f || typeof o.params !== 'object' || o.params === null) throw new Error('not a design');
   const params: Params = {};
   for (const d of f.params) {
-    if (!positive(o.params[d.key])) throw new Error('bad param');
+    const v = o.params[d.key];
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < d.min) throw new Error('bad param');
     params[d.key] = o.params[d.key];
   }
   if (f.validate(params) || !positive(o.thickness) || !positive(o.density)) throw new Error('bad design');
