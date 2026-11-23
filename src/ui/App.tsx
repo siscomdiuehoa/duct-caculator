@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toDxf } from '../core/dxf';
-import { FITTINGS, defaults, getFitting } from '../core/fittings';
+import { defaults, getFitting } from '../core/fittings';
 import { DEFAULT_FLANGE, fromJson, newDesign, toCsv, toJson, UNITS, type Design, type Unit } from '../core/io';
 import { area, flangeLength, weightKg } from '../core/measure';
 import type { Model } from '../core/types';
 import { translate, type Lang } from '../i18n';
+import { FittingPicker } from './FittingPicker';
 import { Viewer3D, type Preset } from './Viewer3D';
 import { Views2D } from './Views2D';
 
@@ -292,13 +293,7 @@ export function App() {
           ) : (
             <>
               <h2>{t('fitting')}</h2>
-              <div className="fittings">
-                {FITTINGS.map((f) => (
-                  <button key={f.id} type="button" className={f.id === design.fitting ? 'on' : ''} onClick={() => pick(f.id)}>
-                    {t(`f.${f.id}`)}
-                  </button>
-                ))}
-              </div>
+              <FittingPicker value={design.fitting} label={t('fitting')} name={(id) => t(`f.${id}`)} onChange={pick} />
 
               <div className="row">
                 <h2>{t('size')}</h2>
@@ -315,11 +310,11 @@ export function App() {
                 {fitting.params.map((p) => (
                   <Field
                     key={`${design.fitting}.${p.key}`}
-                    label={t(`p.${p.key}`)}
+                    label={t(p.label ?? `p.${p.key}`)}
                     value={design.params[p.key]}
-                    factor={factor}
-                    step={STEP[unit]}
-                    suffix={unit}
+                    factor={p.kind === 'count' ? 1 : factor}
+                    step={p.kind === 'count' ? 1 : STEP[unit]}
+                    suffix={p.kind === 'count' ? '' : unit}
                     min={p.min}
                     max={p.max}
                     errText={t('err.number')}
