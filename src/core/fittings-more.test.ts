@@ -79,6 +79,12 @@ describe('sheet area by hand', () => {
   it('FCU box: four closed faces, the collar face with n holes, and n collars', () => {
     const [W, H, L, n, D, C] = [1000, 250, 400, 3, 200, 100];
     close(area(build('fcuBox')), 2 * W * L + 2 * L * H + W * H - (n * PI * D * D) / 4 + n * PI * D * C, 0.002);
+    // Two more collars on each end: four more holes and four more collars.
+    close(
+      area(build('fcuBox', { nL: 2, nR: 2 })),
+      2 * W * L + 2 * L * H + W * H - ((n + 4) * PI * D * D) / 4 + (n + 4) * PI * D * C,
+      0.002,
+    );
   });
   it('cross: the tee with a second branch opposite', () => {
     const [W, H, L, Wb, Lb] = [400, 300, 1000, 300, 250];
@@ -110,14 +116,24 @@ describe('overall sizes', () => {
   it('FCU box reaches L + C deep', () => {
     expect(project(build('fcuBox'), 'plan')).toMatchObject({ w: 1000, h: 500 });
   });
+  it('FCU box end collars stick out C on each side that has them', () => {
+    expect(project(build('fcuBox', { nL: 1 }), 'plan').w).toBeCloseTo(1100, 6);
+    expect(project(build('fcuBox', { nL: 1, nR: 2 }), 'plan').w).toBeCloseTo(1200, 6);
+  });
 });
 
 describe('flanges on round collars', () => {
-  it('make a concentric ring and count the circumference', () => {
-    const m = build('fcuBox');
+  it('make a concentric ring around a round neck', () => {
+    const m = build('tapRound');
     const ring = flanges(m, 30)[1];
     close(area({ ...m, panels: [ring] }), PI * (130 ** 2 - 100 ** 2), 0.003);
-    close(flangeLength(m), 2 * (1000 + 250) + 3 * PI * 200, 0.002);
+    close(flangeLength(m), 2 * (300 + 200) + PI * 200, 0.002);
+  });
+  it('are left off the FCU box collars; only the FCU side has one', () => {
+    const m = build('fcuBox', { nL: 1, nR: 2 });
+    expect(m.openings).toHaveLength(1 + 3 + 1 + 2);
+    expect(flanges(m, 30)).toHaveLength(1);
+    expect(flangeLength(m)).toBeCloseTo(2 * (1000 + 250), 6);
   });
   it('are left off the diffuser plenum at both ends', () => {
     const m = build('plenum');
@@ -138,6 +154,8 @@ describe('drawing', () => {
     expect(getFitting('plenum')!.validate({ ...defaults(getFitting('plenum')!), D: 600 })).toBe('err.collar');
     expect(getFitting('fcuBox')!.validate({ ...defaults(getFitting('fcuBox')!), n: 5 })).toBe('err.collar');
     expect(getFitting('fcuBox')!.validate({ ...defaults(getFitting('fcuBox')!), n: 2.5 })).toBe('err.range');
+    expect(getFitting('fcuBox')!.validate({ ...defaults(getFitting('fcuBox')!), nL: 1 })).toBeNull();
+    expect(getFitting('fcuBox')!.validate({ ...defaults(getFitting('fcuBox')!), nR: 2 })).toBe('err.collar');
     expect(getFitting('cross90')!.validate({ ...defaults(getFitting('cross90')!), W3: 900 })).toBe('err.crossW3');
     expect(getFitting('cross90')!.validate({ ...defaults(getFitting('cross90')!), L: 400 })).toBe('err.crossL');
     expect(getFitting('silencer')!.validate({ ...defaults(getFitting('silencer')!), W: 600 })).toBe('err.mouth');
