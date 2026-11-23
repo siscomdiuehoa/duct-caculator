@@ -375,7 +375,7 @@ export function App() {
                     {kg.toFixed(2)} <em>kg</em>
                   </dd>
                 </div>
-                {flange > 0 && (
+                {flange > 0 && flangeLength(model) > 0 && (
                   <div className="wide">
                     <dt>{t('flange.length')}</dt>
                     <dd>
