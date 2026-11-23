@@ -13,7 +13,7 @@ export function toDxf(model: Model, flange = 0): string {
   const [front, , plan] = views;
   const big = Math.max(...views.flatMap((v) => [v.w, v.h]));
   const th = big / 40;
-  const gap = th * 8 + flange * 2;
+  const gap = th * 8;
   const origin: P2[] = [
     [0, 0],
     [front.w + gap, 0],
@@ -34,13 +34,13 @@ export function toDxf(model: Model, flange = 0): string {
     for (const d of v.dims) {
       const label = `${d.label} ${fmt(d.value)}`;
       if (d.extent === 'h') {
-        const y = -th * 2 - flange;
+        const y = -th * 2;
         line('DIM', at([0, y]), at([v.w, y]));
         line('DIM', at([0, 0]), at([0, y - th / 2]));
         line('DIM', at([v.w, 0]), at([v.w, y - th / 2]));
         text(at([v.w / 2 - th * 2, y - th * 1.5]), label);
       } else if (d.extent === 'v') {
-        const x = -th * 2 - flange;
+        const x = -th * 2;
         line('DIM', at([x, 0]), at([x, v.h]));
         line('DIM', at([0, 0]), at([x - th / 2, 0]));
         line('DIM', at([0, v.h]), at([x - th / 2, v.h]));

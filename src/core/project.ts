@@ -16,7 +16,6 @@ export interface Dim2D {
 export interface View2D {
   id: ViewId;
   segs: [P2, P2][];
-  /** Flange outlines; these may reach outside the 0..w, 0..h box. */
   flangeSegs: [P2, P2][];
   dims: Dim2D[];
   w: number;
@@ -32,10 +31,14 @@ const AXES: Record<ViewId, [number, number, string, string]> = {
 
 export const VIEWS: ViewId[] = ['front', 'side', 'plan'];
 
-/** Orthographic wireframe of the model, shifted so its lower-left corner is (0, 0). */
+/**
+ * Orthographic wireframe of the model, shifted so its lower-left corner is (0, 0).
+ * The overall size includes the flanges, as that is what has to fit on site.
+ */
 export function project(model: Model, id: ViewId, flange = 0): View2D {
   const [i, j, hn, vn] = AXES[id];
-  const { min, max } = bounds(model);
+  const rings = flanges(model, flange);
+  const { min, max } = bounds({ ...model, panels: [...model.panels, ...rings] });
   const to2 = (p: Vec3): P2 => [p[i] - min[i], p[j] - min[j]];
   const w = max[i] - min[i];
   const h = max[j] - min[j];
@@ -58,7 +61,7 @@ export function project(model: Model, id: ViewId, flange = 0): View2D {
     return out;
   };
   const segs = outline(model.panels);
-  const flangeSegs = outline(flanges(model, flange));
+  const flangeSegs = outline(rings);
 
   const dims: Dim2D[] = [
     { a: [0, 0], b: [w, 0], label: hn, value: w, extent: 'h' },

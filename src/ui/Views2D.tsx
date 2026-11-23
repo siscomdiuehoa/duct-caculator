@@ -8,12 +8,11 @@ interface Props {
   dimText: (label: string, mm: number) => string;
 }
 
-function View({ view, flange, dimText }: { view: View2D; flange: number; dimText: Props['dimText'] }) {
+function View({ view, dimText }: { view: View2D; dimText: Props['dimText'] }) {
   const s = Math.max(view.w, view.h);
-  const pad = s * 0.24 + flange;
+  const pad = s * 0.24;
   const fs = s * 0.055;
-  // Dimension lines sit outside the flange.
-  const off = s * 0.08 + flange;
+  const off = s * 0.08;
   // SVG y grows downwards, drawings grow upwards.
   const y = (v: number) => view.h - v;
   return (
@@ -57,11 +56,11 @@ function View({ view, flange, dimText }: { view: View2D; flange: number; dimText
             className="label"
             x={(d.a[0] + d.b[0]) / 2}
             y={y((d.a[1] + d.b[1]) / 2)}
-            fontSize={fs * 0.9}
+            fontSize={fs * 0.8}
             textAnchor="middle"
             dominantBaseline="middle"
           >
-            {d.label}
+            {text}
           </text>
           </g>
         );
@@ -76,7 +75,7 @@ export function Views2D({ model, flange, title, dimText }: Props) {
       {VIEWS.map((id) => (
         <figure className="card view" key={id}>
           <figcaption>{title(id)}</figcaption>
-          <View view={project(model, id, flange)} flange={flange} dimText={dimText} />
+          <View view={project(model, id, flange)} dimText={dimText} />
         </figure>
       ))}
     </>

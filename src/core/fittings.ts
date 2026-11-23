@@ -3,6 +3,8 @@ import type { Dim, FittingDef, Model, Panel, ParamDef, Params, Vec3 } from './ty
 const ARC_STEPS = 48;
 
 const size = (key: string, def: number, max = 5000): ParamDef => ({ key, def, min: 1, max, step: 1 });
+/** A length that may be zero, such as a tangent straight. */
+const length = (key: string, def: number, max = 5000): ParamDef => ({ key, def, min: 0, max, step: 1 });
 
 /** Four panels joining consecutive rectangular sections (corners in loop order). */
 function sweep(sections: Vec3[][], names: string[]): Panel[] {
@@ -72,28 +74,40 @@ const reducer: FittingDef = {
 
 const elbow90: FittingDef = {
   id: 'elbow90',
-  params: [size('W', 400), size('H', 300), size('R', 200)],
+  params: [size('W', 500), size('H', 300), size('R', 225), length('A', 60), length('B', 60)],
   validate(p) {
     return baseValidate(this.params, p);
   },
-  build({ W, H, R }): Model {
-    // Inlet lies in the X-Y plane at z = 0; the bend turns towards +X around (W + R, y, 0).
-    const cx = W + R;
-    const at = (r: number, t: number, y: number): Vec3 => [cx - r * Math.cos(t), y, r * Math.sin(t)];
-    const sections: Vec3[][] = [];
+  build({ W, H, R, A, B }): Model {
+    // Inlet A faces -X at x = 0. After a straight of length A the duct bends upwards in the
+    // X-Z plane around (A, y, H + R), then runs straight for B to outlet B, which faces +Z.
+    // H lies in the bend plane; W is the depth along Y.
+    const zc = H + R;
+    const top = zc + B;
+    const at = (r: number, t: number, y: number): Vec3 => [A + r * Math.sin(t), y, zc - r * Math.cos(t)];
+    const ring = (f: (r: number, y: number) => Vec3): Vec3[] => [f(R + H, 0), f(R, 0), f(R, W), f(R + H, W)];
+    const inlet = ring((r, y) => [0, y, zc - r]);
+    const outlet = ring((r, y) => [A + r, y, top]);
+    const sections: Vec3[][] = [inlet];
     for (let i = 0; i <= ARC_STEPS; i++) {
       const t = (Math.PI / 2) * (i / ARC_STEPS);
-      sections.push([at(R + W, t, 0), at(R, t, 0), at(R, t, H), at(R + W, t, H)]);
+      sections.push(ring((r, y) => at(r, t, y)));
     }
+    sections.push(outlet);
+    const xm = A + R + H / 2;
     const dims: Dim[] = [
-      { a: [0, 0, 0], b: [W, 0, 0], label: 'W' },
-      { a: [0, 0, 0], b: [0, H, 0], label: 'H' },
-      { a: [cx, 0, 0], b: at(R, Math.PI / 4, 0), label: 'R' },
+      { a: [0, 0, H / 2], b: [0, W, H / 2], label: 'W A' },
+      { a: [0, 0, 0], b: [0, 0, H], label: 'H A' },
+      { a: [xm, 0, top], b: [xm, W, top], label: 'W B' },
+      { a: [A + R, 0, top], b: [A + R + H, 0, top], label: 'H B' },
+      { a: [A, 0, zc], b: at(R, Math.PI / 4, 0), label: 'R' },
     ];
+    if (A > 0) dims.push({ a: [0, 0, 0], b: [A, 0, 0], label: 'A' });
+    if (B > 0) dims.push({ a: [A + R + H, 0, zc], b: [A + R + H, 0, top], label: 'B' });
     return {
       panels: sweep(sections, ['front', 'inner', 'back', 'outer']),
       dims,
-      openings: [sections[0], sections[ARC_STEPS]],
+      openings: [inlet, outlet],
     };
   },
 };

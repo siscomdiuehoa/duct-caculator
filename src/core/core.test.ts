@@ -20,9 +20,15 @@ describe('area and weight', () => {
     const want = 2 * 300 * Math.hypot(500, 50) + 2 * 250 * Math.hypot(500, 100);
     close(area(build('reducer')), want, 0.001);
   });
-  it('elbow W400 H300 R200', () => {
-    const want = (Math.PI / 2) * 300 * (200 + 600) + 2 * (Math.PI / 4) * (600 ** 2 - 200 ** 2);
-    close(area(build('elbow90')), want, 0.005);
+  it('elbow 500x300, R225, straights 60 and 60', () => {
+    // Two cheeks (straight + quarter annulus + straight), then inner and outer wraps 500 wide.
+    const cheek = 60 * 300 + (Math.PI / 4) * (525 ** 2 - 225 ** 2) + 60 * 300;
+    const want = 2 * cheek + 500 * (60 + (Math.PI / 2) * 225 + 60) + 500 * (60 + (Math.PI / 2) * 525 + 60);
+    close(area(build('elbow90')), want, 0.001);
+  });
+  it('elbow without straights is the plain quarter bend', () => {
+    const want = 2 * (Math.PI / 4) * (525 ** 2 - 225 ** 2) + 500 * (Math.PI / 2) * (225 + 525);
+    close(area(build('elbow90', { A: 0, B: 0 })), want, 0.001);
   });
   it('tee 400x300x1000 with 300x250 branch', () => {
     expect(area(build('tee'))).toBeCloseTo(1_400_000 - 300 * 300 + 2 * 250 * 300 + 2 * 250 * 300, 6);
@@ -46,16 +52,17 @@ describe('flanges', () => {
   it('measures the flange profile length as the opening perimeters', () => {
     expect(flangeLength(build('straight'))).toBeCloseTo(2 * 1400, 6);
     expect(flangeLength(build('tee'))).toBeCloseTo(2 * 1400 + 2 * (300 + 300), 6);
-    expect(flangeLength(build('elbow90'))).toBeCloseTo(2 * 1400, 6);
+    expect(flangeLength(build('elbow90'))).toBeCloseTo(2 * 1600, 6);
   });
-  it('shows in the views without changing their extents', () => {
+  it('counts in the overall size of each view', () => {
     const plain = project(build('straight'), 'front');
     const flanged = project(build('straight'), 'front', 30);
     expect(plain.flangeSegs).toEqual([]);
-    expect(flanged).toMatchObject({ w: 400, h: 1000 });
+    expect(plain).toMatchObject({ w: 400, h: 1000 });
+    expect(flanged).toMatchObject({ w: 460, h: 1000 });
     const xs = flanged.flangeSegs.flat().map((p) => p[0]);
-    expect(Math.min(...xs)).toBeCloseTo(-30, 6);
-    expect(Math.max(...xs)).toBeCloseTo(430, 6);
+    expect(Math.min(...xs)).toBeCloseTo(0, 6);
+    expect(Math.max(...xs)).toBeCloseTo(460, 6);
   });
 });
 
@@ -80,8 +87,21 @@ describe('projection', () => {
     expect(project(m, 'side')).toMatchObject({ w: 300, h: 1000 });
     expect(project(m, 'plan')).toMatchObject({ w: 400, h: 300 });
   });
-  it('elbow front view spans W + R both ways', () => {
-    expect(project(build('elbow90'), 'front')).toMatchObject({ w: 600, h: 600 });
+  it('elbow 500x300 R225 with 60 straights measures 585 x 500 x 585', () => {
+    const m = build('elbow90');
+    expect(project(m, 'front')).toMatchObject({ w: 585, h: 585 });
+    expect(project(m, 'side')).toMatchObject({ w: 500, h: 585 });
+    expect(project(m, 'plan')).toMatchObject({ w: 585, h: 500 });
+    // With 30 mm flanges: the outlet flange adds 30 in X, the inlet flange 30 below in Z, both 30 each side in Y.
+    expect(project(m, 'front', 30)).toMatchObject({ w: 615, h: 615 });
+    expect(project(m, 'side', 30)).toMatchObject({ w: 560, h: 615 });
+  });
+  it('elbow views carry the size of each opening', () => {
+    const dims = (v: 'front' | 'side' | 'plan') =>
+      Object.fromEntries(project(build('elbow90'), v).dims.map((d) => [d.label, Math.round(d.value * 10) / 10]));
+    expect(dims('front')).toEqual({ X: 585, Z: 585, 'H A': 300, 'H B': 300, R: 225, A: 60, B: 60 });
+    expect(dims('side')).toEqual({ Y: 500, Z: 585, 'W A': 500, 'H A': 300, 'W B': 500, B: 60 });
+    expect(dims('plan')).toEqual({ X: 585, Y: 500, 'W A': 500, 'W B': 500, 'H B': 300, A: 60 });
   });
   it('lists fitting dimensions only in views that show them at true length', () => {
     const labels = (v: 'front' | 'plan') => project(build('straight'), v).dims.map((d) => d.label);
