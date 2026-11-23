@@ -412,7 +412,7 @@ export function App() {
         </section>
 
         <section className="views">
-          <Views2D model={model} flange={flange} title={(id) => t(`view.${id}`)} dimText={(l, mm) => `${dimText(l, mm)} ${unit}`} />
+          <Views2D model={model} flange={flange} title={(id) => t(`view.${id}`)} dimText={dimText} />
         </section>
       </main>
     </>
