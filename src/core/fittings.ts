@@ -9,7 +9,7 @@ const ROUND_STEPS = 64;
 const size = (key: string, def: number, max = 5000): ParamDef => ({ key, def, min: 1, max, step: 1 });
 /** A length that may be zero, such as a tangent straight. */
 const length = (key: string, def: number, max = 5000): ParamDef => ({ key, def, min: 0, max, step: 1 });
-const count = (key: string, def: number, max: number): ParamDef => ({ key, def, min: 1, max, step: 1, kind: 'count' });
+const count = (key: string, def: number, max: number, min = 1): ParamDef => ({ key, def, min, max, step: 1, kind: 'count' });
 const named = (d: ParamDef, label: string): ParamDef => ({ ...d, label });
 
 /** Four panels joining consecutive rectangular sections (corners in loop order). */
@@ -445,33 +445,46 @@ const fcuBox: FittingDef = {
     named(size('H', 250), 'p.boxH'),
     named(size('L', 400), 'p.fcuL'),
     named(count('n', 3, 8), 'p.n'),
+    named(count('nL', 0, 4, 0), 'p.nL'),
+    named(count('nR', 0, 4, 0), 'p.nR'),
     named(size('D', 200), 'p.D'),
     named(length('C', 100), 'p.C'),
   ],
   validate(p) {
-    return baseValidate(this.params, p) ?? (p.D >= Math.min(p.W / p.n, p.H) ? 'err.collar' : null);
+    const e = baseValidate(this.params, p);
+    if (e) return e;
+    const fits = (count: number, width: number) => count === 0 || p.D < Math.min(width / count, p.H);
+    return fits(p.n, p.W) && fits(p.nL, p.L) && fits(p.nR, p.L) ? null : 'err.collar';
   },
-  build({ W, H, L, n, D, C }): Model {
+  build({ W, H, L, n, nL, nR, D, C }): Model {
     // Box W long (X) x L deep (Y) x H high (Z). The FCU side y = 0 is open; the far face y = L
-    // carries n round collars at equal spacing.
+    // carries n round collars at equal spacing, and each end may carry more (nL at x = 0,
+    // nR at x = W). Collars take flexible duct, so only the FCU side has a flange.
     const r = D / 2;
-    const at = (pts: P2[], y: number) => pts.map(([x, z]): Vec3 => [x, y, z]);
     const panels: Panel[] = [
       quad('bottom', [0, 0, 0], [W, 0, 0], [W, L, 0], [0, L, 0]),
       quad('top', [0, 0, H], [W, 0, H], [W, L, H], [0, L, H]),
-      quad('end-left', [0, 0, 0], [0, L, 0], [0, L, H], [0, 0, H]),
-      quad('end-right', [W, 0, 0], [W, L, 0], [W, L, H], [W, 0, H]),
     ];
     const openings: Vec3[][] = [[[0, 0, 0], [W, 0, 0], [W, 0, H], [0, 0, H]]];
-    const step = W / n;
-    for (let i = 0; i < n; i++) {
-      const cx = step * (i + 0.5);
-      const { rect: edge, circ, quadrants } = rectRound(cx, H / 2, step, H, r);
-      panels.push(holedPlate(`face-${i}`, at(edge, L), at(circ, L)));
-      if (C > 0) panels.push(collar(`collar-${i}`, at(circ, L), at(circ, L + C), quadrants));
-      openings.push(at(circ, L + C));
-    }
-    const cx = step / 2;
+    /** A face of the given width split into `count` equal plates, each with a centred collar. */
+    const face = (name: string, count: number, width: number, place: (u: number, z: number, out: number) => Vec3) => {
+      if (count === 0) {
+        panels.push(quad(name, place(0, 0, 0), place(width, 0, 0), place(width, H, 0), place(0, H, 0)));
+        return;
+      }
+      const step = width / count;
+      for (let i = 0; i < count; i++) {
+        const { rect: edge, circ, quadrants } = rectRound(step * (i + 0.5), H / 2, step, H, r);
+        const at = (pts: P2[], out: number) => pts.map(([u, z]) => place(u, z, out));
+        panels.push(holedPlate(`${name}-${i}`, at(edge, 0), at(circ, 0)));
+        if (C > 0) panels.push(collar(`${name}-collar-${i}`, at(circ, 0), at(circ, C), quadrants));
+        openings.push(at(circ, C));
+      }
+    };
+    face('face', n, W, (u, z, out) => [u, L + out, z]);
+    face('end-left', nL, L, (u, z, out) => [-out, u, z]);
+    face('end-right', nR, L, (u, z, out) => [W + out, u, z]);
+    const cx = W / n / 2;
     const dims: Dim[] = [
       { a: [0, 0, 0], b: [W, 0, 0], label: 'W' },
       { a: [0, 0, 0], b: [0, 0, H], label: 'H' },
@@ -479,7 +492,7 @@ const fcuBox: FittingDef = {
       { a: [cx - r, L + C, H / 2], b: [cx + r, L + C, H / 2], label: 'D' },
     ];
     if (C > 0) dims.push({ a: [cx + r, L, H / 2], b: [cx + r, L + C, H / 2], label: 'C' });
-    return { panels, dims, openings };
+    return { panels, dims, openings, bare: openings.map((_, k) => k).slice(1) };
   },
 };
 
