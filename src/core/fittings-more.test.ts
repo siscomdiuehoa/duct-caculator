@@ -3,7 +3,7 @@ import { toDxf } from './dxf';
 import { earcut } from './earcut';
 import { FITTINGS, defaults, getFitting } from './fittings';
 import { fromJson, newDesign, toJson } from './io';
-import { area, bounds, edges, flangeLength, flanges } from './measure';
+import { area, bounds, edges, flangedOpenings, flangeLength, flanges } from './measure';
 import { project, VIEWS } from './project';
 
 const build = (id: string, p?: Record<string, number>) => {
@@ -36,7 +36,7 @@ describe('every fitting', () => {
       const { min, max } = bounds(m);
       expect([...min, ...max].every(Number.isFinite), f.id).toBe(true);
       expect(new Set(m.dims.map((d) => d.label)).size, f.id).toBe(m.dims.length);
-      expect(flanges(m, 30), f.id).toHaveLength(m.openings.length);
+      expect(flanges(m, 30), f.id).toHaveLength(flangedOpenings(m).length);
       for (const v of VIEWS) expect(project(m, v, 30).segs.length, `${f.id} ${v}`).toBeGreaterThan(0);
       expect(toDxf(m, 30)).toContain('EOF');
       expect(fromJson(toJson({ ...newDesign(f.id) })).fitting).toBe(f.id);
@@ -114,10 +114,16 @@ describe('overall sizes', () => {
 
 describe('flanges on round collars', () => {
   it('make a concentric ring and count the circumference', () => {
-    const m = build('plenum');
+    const m = build('fcuBox');
     const ring = flanges(m, 30)[1];
-    close(area({ ...m, panels: [ring] }), PI * (155 ** 2 - 125 ** 2), 0.003);
-    close(flangeLength(m), 2 * (600 + 600) + PI * 250, 0.002);
+    close(area({ ...m, panels: [ring] }), PI * (130 ** 2 - 100 ** 2), 0.003);
+    close(flangeLength(m), 2 * (1000 + 250) + 3 * PI * 200, 0.002);
+  });
+  it('are left off the diffuser plenum at both ends', () => {
+    const m = build('plenum');
+    expect(flanges(m, 30)).toEqual([]);
+    expect(flangeLength(m)).toBe(0);
+    expect(project(m, 'front', 30)).toMatchObject({ w: 600, h: 400 });
   });
 });
 
