@@ -433,7 +433,8 @@ const plenum: FittingDef = {
       { a: [W / 2 - r, L / 2, H + C], b: [W / 2 + r, L / 2, H + C], label: 'D' },
     ];
     if (C > 0) dims.push({ a: [W / 2 + r, L / 2, H], b: [W / 2 + r, L / 2, H + C], label: 'C' });
-    return { panels, dims, openings: [rect(0, W, 0, L, 0), at(circ, H + C)] };
+    // The bottom takes the diffuser and the collar takes flexible duct, so neither has a flange.
+    return { panels, dims, openings: [rect(0, W, 0, L, 0), at(circ, H + C)], bare: [0, 1] };
   },
 };
 
