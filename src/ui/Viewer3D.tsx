@@ -42,6 +42,7 @@ export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, f
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
+  const reframe = useRef<(() => void) | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -81,12 +82,16 @@ export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, f
       }
     };
     controls.addEventListener('change', render);
+    let sized = false;
     const resize = new ResizeObserver(() => {
       const { clientWidth: w, clientHeight: h } = el;
       if (!w || !h) return;
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      // The first framing ran before the canvas had a size, so repeat it once.
+      if (!sized) reframe.current?.();
+      sized = true;
       render();
     });
     resize.observe(el);
@@ -148,21 +153,25 @@ export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, f
   useEffect(() => {
     const s = stage.current;
     if (!s) return;
-    const { min, max } = bounds(model);
-    const centre = new THREE.Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
-    const radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2;
-    const fov = (s.camera.fov * Math.PI) / 180;
-    const fit = radius / Math.sin(Math.min(fov, fov * s.camera.aspect) / 2);
-    const dir = new THREE.Vector3(...DIRS[preset]).normalize();
-    // Looking straight down needs a different up vector than the Z-up default.
-    s.camera.up.set(0, preset === 'plan' ? 1 : 0, preset === 'plan' ? 0 : 1);
-    s.camera.position.copy(centre).addScaledVector(dir, fit * 1.15);
-    s.camera.near = fit / 100;
-    s.camera.far = fit * 100;
-    s.camera.updateProjectionMatrix();
-    s.controls.target.copy(centre);
-    s.controls.update();
-    s.render();
+    const fitView = () => {
+      const { min, max } = bounds({ ...model, panels: [...model.panels, ...flanges(model, flange)] });
+      const centre = new THREE.Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
+      const radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2;
+      const fov = (s.camera.fov * Math.PI) / 180;
+      const fit = radius / Math.sin(Math.min(fov, fov * s.camera.aspect) / 2);
+      const dir = new THREE.Vector3(...DIRS[preset]).normalize();
+      // Looking straight down needs a different up vector than the Z-up default.
+      s.camera.up.set(0, preset === 'plan' ? 1 : 0, preset === 'plan' ? 0 : 1);
+      s.camera.position.copy(centre).addScaledVector(dir, fit * 1.15);
+      s.camera.near = fit / 100;
+      s.camera.far = fit * 100;
+      s.camera.updateProjectionMatrix();
+      s.controls.target.copy(centre);
+      s.controls.update();
+      s.render();
+    };
+    reframe.current = fitView;
+    fitView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameKey, preset]);
 
