@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toDxf } from '../core/dxf';
 import { defaults, getFitting } from '../core/fittings';
-import { DEFAULT_FLANGE, fromJson, newDesign, toCsv, toJson, UNITS, type Design, type Unit } from '../core/io';
+import { DEFAULT_FLANGE, newDesign, toCsv, UNITS, type Design, type Unit } from '../core/io';
 import { area, flangeLength, weightKg } from '../core/measure';
 import type { Model } from '../core/types';
 import { translate, type Lang } from '../i18n';
@@ -118,7 +118,6 @@ export function App() {
     return Array.isArray(v) ? (v as Saved[]) : [];
   });
   const [name, setName] = useState('');
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const t = translate(lang);
   useEffect(() => {
@@ -155,22 +154,11 @@ export function App() {
   };
   const pick = (id: string) => open({ ...design, fitting: id, params: defaults(getFitting(id)!) });
 
-  const exportAs = (kind: 'dxf' | 'csv' | 'json') => {
+  const exportAs = (kind: 'dxf' | 'csv') => {
     const d = current.design;
     const file = `siscom-duct-${d.fitting}`;
     if (kind === 'dxf') download(`${file}.dxf`, toDxf(model, d.flange), 'application/dxf');
     if (kind === 'csv') download(`${file}.csv`, toCsv(d, t(`f.${d.fitting}`)), 'text/csv');
-    if (kind === 'json') download(`${file}.json`, toJson(d), 'application/json');
-  };
-  const openFile = async (file: File | undefined) => {
-    if (!file) return;
-    try {
-      open(fromJson(await file.text()));
-      setNotice('');
-    } catch {
-      setNotice(t('err.file'));
-    }
-    if (fileInput.current) fileInput.current.value = '';
   };
 
   const saveLibrary = (next: Saved[]) => {
@@ -394,13 +382,6 @@ export function App() {
                 <button type="button" onClick={() => exportAs('csv')}>
                   {t('ex.csv')}
                 </button>
-                <button type="button" onClick={() => exportAs('json')}>
-                  {t('ex.json')}
-                </button>
-                <button type="button" onClick={() => fileInput.current?.click()}>
-                  {t('ex.open')}
-                </button>
-                <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => openFile(e.target.files?.[0])} />
               </div>
             </>
           )}
