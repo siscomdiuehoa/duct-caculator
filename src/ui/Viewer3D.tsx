@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { dimShape, dimStyle, outward, stack } from '../core/dimension';
 import { bounds, edges, flanges, triangles } from '../core/measure';
 import type { Panel } from '../core/types';
 import type { Model } from '../core/types';
@@ -36,6 +37,19 @@ interface Stage {
   controls: OrbitControls;
   group: THREE.Group;
   render: () => void;
+}
+
+/** Dimensions drawn clear of the part, on the side facing away from its centre. */
+function dimensions(model: Model, flange: number) {
+  const { min, max } = bounds({ ...model, panels: [...model.panels, ...flanges(model, flange)] });
+  const centre = min.map((c, i) => (c + max[i]) / 2);
+  const st = dimStyle(Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]));
+  const sides = model.dims.map((d) => outward(d.a, d.b, centre));
+  const offs = stack(
+    model.dims.map((d, k) => ({ n: sides[k], len: Math.hypot(d.a[0] - d.b[0], d.a[1] - d.b[1], d.a[2] - d.b[2]) })),
+    st,
+  );
+  return model.dims.map((d, k) => ({ d, shape: dimShape(d.a, d.b, sides[k], offs[k], st) }));
 }
 
 export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, failText }: Props) {
@@ -142,9 +156,15 @@ export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, f
     solid(model.panels, ACI.body);
     solid(flanges(model, flange), ACI.flange);
     if (showDims) {
+      const shapes = dimensions(model, flange).map((x) => x.shape);
       const dim = new THREE.BufferGeometry();
-      dim.setAttribute('position', flat(model.dims.flatMap((d) => [d.a, d.b])));
+      dim.setAttribute('position', flat(shapes.flatMap((sh) => [...sh.ext.flat(), ...sh.line])));
       s.group.add(new THREE.LineSegments(dim, new THREE.LineBasicMaterial({ color: ACI.dim, depthTest: false })));
+      const heads = new THREE.BufferGeometry();
+      heads.setAttribute('position', flat(shapes.flatMap((sh) => sh.arrows.flat())));
+      s.group.add(
+        new THREE.Mesh(heads, new THREE.MeshBasicMaterial({ color: ACI.dim, depthTest: false, side: THREE.DoubleSide })),
+      );
     }
     s.render();
   }, [model, flange, showDims]);
@@ -182,13 +202,8 @@ export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, f
     <div className="viewer-canvas" ref={host}>
       <div className="dim-labels" ref={labels}>
         {showDims &&
-          model.dims.map((d) => (
-            <span
-              key={d.label}
-              data-x={(d.a[0] + d.b[0]) / 2}
-              data-y={(d.a[1] + d.b[1]) / 2}
-              data-z={(d.a[2] + d.b[2]) / 2}
-            >
+          dimensions(model, flange).map(({ d, shape }) => (
+            <span key={d.label} data-x={shape.text[0]} data-y={shape.text[1]} data-z={shape.text[2]}>
               {dimText(d.label, Math.hypot(d.a[0] - d.b[0], d.a[1] - d.b[1], d.a[2] - d.b[2]))}
             </span>
           ))}

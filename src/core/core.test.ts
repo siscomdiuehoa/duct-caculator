@@ -100,13 +100,14 @@ describe('projection', () => {
     const dims = (v: 'front' | 'side' | 'plan') =>
       Object.fromEntries(project(build('elbow90'), v).dims.map((d) => [d.label, Math.round(d.value * 10) / 10]));
     expect(dims('front')).toEqual({ X: 585, Z: 585, 'H A': 300, 'H B': 300, R: 225, A: 60, B: 60 });
-    expect(dims('side')).toEqual({ Y: 500, Z: 585, 'W A': 500, 'H A': 300, 'W B': 500, B: 60 });
-    expect(dims('plan')).toEqual({ X: 585, Y: 500, 'W A': 500, 'W B': 500, 'H B': 300, A: 60 });
+    expect(dims('side')).toEqual({ Z: 585, 'W A': 500, 'H A': 300, 'W B': 500, B: 60 });
+    expect(dims('plan')).toEqual({ X: 585, 'W A': 500, 'W B': 500, 'H B': 300, A: 60 });
   });
   it('lists fitting dimensions only in views that show them at true length', () => {
     const labels = (v: 'front' | 'plan') => project(build('straight'), v).dims.map((d) => d.label);
-    expect(labels('front')).toEqual(['X', 'Z', 'W', 'L']);
-    expect(labels('plan')).toEqual(['X', 'Y', 'W', 'H']);
+    // The overall sizes equal W, L and H here, so they are not drawn a second time.
+    expect(labels('front')).toEqual(['W', 'L']);
+    expect(labels('plan')).toEqual(['W', 'H']);
   });
 });
 
@@ -124,7 +125,7 @@ describe('dxf', () => {
     // Front view is 400 wide; the side view sits to its right.
     expect(xs.filter((x) => x <= 400).length).toBeGreaterThan(0);
     expect(xs).toContain(400);
-    expect(dxf).toContain('Z 1000');
+    expect(dxf).toContain('L 1000');
     expect(dxf).not.toContain('FLANGE');
   });
   it('puts flanges on their own yellow layer', () => {

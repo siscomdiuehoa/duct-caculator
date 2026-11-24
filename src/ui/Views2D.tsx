@@ -9,14 +9,14 @@ interface Props {
 }
 
 function View({ view, dimText }: { view: View2D; dimText: Props['dimText'] }) {
-  const s = Math.max(view.w, view.h);
-  const pad = s * 0.24;
-  const fs = s * 0.055;
-  const off = s * 0.08;
+  const { style: st, box } = view;
+  const fs = st.text;
+  const m = st.t * 0.6;
   // SVG y grows downwards, drawings grow upwards.
   const y = (v: number) => view.h - v;
+  const pt = (p: number[]) => `${p[0]} ${y(p[1])}`;
   return (
-    <svg viewBox={`${-pad} ${-pad * 0.6} ${view.w + pad * 1.5} ${view.h + pad * 1.6}`} role="img">
+    <svg viewBox={`${box[0] - m} ${y(box[3]) - m} ${box[2] - box[0] + 2 * m} ${box[3] - box[1] + 2 * m}`} role="img">
       {view.segs.map(([a, b], i) => (
         <line key={i} className="outline" x1={a[0]} y1={y(a[1])} x2={b[0]} y2={y(b[1])} />
       ))}
@@ -24,44 +24,23 @@ function View({ view, dimText }: { view: View2D; dimText: Props['dimText'] }) {
         <line key={`f${i}`} className="flange" x1={a[0]} y1={y(a[1])} x2={b[0]} y2={y(b[1])} />
       ))}
       {view.dims.map((d) => {
-        const text = dimText(d.label, d.value);
-        if (d.extent === 'h')
-          return (
-            <g key="eh" className="dim">
-              <path d={`M0 ${y(0) + off}H${view.w}M0 ${y(0)}V${y(0) + off * 1.3}M${view.w} ${y(0)}V${y(0) + off * 1.3}`} />
-              <text x={view.w / 2} y={y(0) + off + fs * 1.2} fontSize={fs} textAnchor="middle">
-                {text}
-              </text>
-            </g>
-          );
-        if (d.extent === 'v')
-          return (
-            <g key="ev" className="dim">
-              <path d={`M${-off} ${y(0)}V${y(view.h)}M0 ${y(0)}H${-off * 1.3}M0 ${y(view.h)}H${-off * 1.3}`} />
-              <text
-                x={-off - fs * 0.4}
-                y={y(view.h / 2)}
-                fontSize={fs}
-                textAnchor="middle"
-                transform={`rotate(-90 ${-off - fs * 0.4} ${y(view.h / 2)})`}
-              >
-                {text}
-              </text>
-            </g>
-          );
+        const { shape } = d;
+        const anchor = pt(shape.text);
         return (
-          <g key={d.label}>
-            <line className="mark" x1={d.a[0]} y1={y(d.a[1])} x2={d.b[0]} y2={y(d.b[1])} />
-          <text
-            className="label"
-            x={(d.a[0] + d.b[0]) / 2}
-            y={y((d.a[1] + d.b[1]) / 2)}
-            fontSize={fs * 0.8}
-            textAnchor="middle"
-            dominantBaseline="middle"
-          >
-            {text}
-          </text>
+          <g key={d.label} className="dim">
+            <path d={[...shape.ext, shape.line].map(([p, q]) => `M${pt(p)}L${pt(q)}`).join('')} />
+            {shape.arrows.map((tri, i) => (
+              <polygon key={i} points={tri.map(pt).join(' ')} style={{ fill: 'var(--cad-dim)', stroke: 'none' }} />
+            ))}
+            <text
+              x={shape.text[0]}
+              y={y(shape.text[1])}
+              fontSize={fs}
+              textAnchor="middle"
+              transform={shape.angle ? `rotate(${-shape.angle} ${anchor})` : undefined}
+            >
+              {dimText(d.label, d.value)}
+            </text>
           </g>
         );
       })}
