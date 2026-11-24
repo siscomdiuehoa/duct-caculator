@@ -129,6 +129,17 @@ export function Viewer3D({ model, flange, frameKey, preset, showDims, dimText, f
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();
     }
+    // A subdued XY work grid sits below the fitting and follows its size and position.
+    const box = bounds({ ...model, panels: [...model.panels, ...flanges(model, flange)] });
+    const extent = Math.max(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2], 1);
+    const grid = new THREE.GridHelper(extent * 8, 48, 0x365777, 0x365777);
+    grid.rotation.x = Math.PI / 2;
+    grid.position.set((box.min[0] + box.max[0]) / 2, (box.min[1] + box.max[1]) / 2, box.min[2] - extent * 0.12);
+    const gridMaterial = grid.material as THREE.Material;
+    gridMaterial.transparent = true;
+    gridMaterial.opacity = 0.38;
+    gridMaterial.depthWrite = false;
+    s.group.add(grid);
     const flat = (pts: number[][]) => new THREE.Float32BufferAttribute(pts.flat(), 3);
     const solid = (panels: Panel[], color: number) => {
       if (!panels.length) return;

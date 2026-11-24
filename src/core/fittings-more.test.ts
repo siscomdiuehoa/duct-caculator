@@ -67,14 +67,50 @@ describe('sheet area by hand', () => {
     expect(area(build('tapRect'))).toBeCloseTo(L * (2 * W + E) + H * L + H * Math.hypot(L, E), 6);
   });
   it('round tap flattens to the foot plate minus the neck', () => {
-    close(area(build('tapRound', { D: 100, L: 1e-6 })), 300 * 200 - PI * 50 * 50, 0.002);
+    close(area(build('tapRound', { W: 300, H: 200, D: 100, L: 1e-6, base: 0, neck: 0 })), 300 * 200 - PI * 50 * 50, 0.002);
+  });
+  it('round tap includes straight rectangular base and round collar', () => {
+    const m = build('tapRound');
+    expect(area({ ...m, panels: m.panels.filter(p => ['front', 'right', 'back', 'left'].includes(p.name)) })).toBeCloseTo(2 * (600 + 450) * 50, 5);
+    close(area({ ...m, panels: m.panels.filter(p => p.name === 'neck') }), Math.PI * 315 * 50, 0.002);
+    expect(project(m, 'front', 32).h).toBeCloseTo(320, 6);
+    expect(getFitting('tapRound')!.validate({ ...defaults(getFitting('tapRound')!), base: 200, neck: 120 })).toBe('err.tapLengths');
   });
   it('silencer: casing plus two end plates with the mouth cut out', () => {
     expect(area(build('silencer'))).toBeCloseTo(2 * (600 + 500) * 900 + 2 * (600 * 500 - 400 * 300), 6);
   });
   it('plenum: four sides, top plate less the collar hole, and the collar', () => {
     const [W, L, H, D, C] = [600, 600, 300, 250, 100];
-    close(area(build('plenum')), 2 * (W + L) * H + W * L - (PI * D * D) / 4 + PI * D * C, 0.002);
+    close(area(build('plenum', { D })), 2 * (W + L) * H + W * L - (PI * D * D) / 4 + PI * D * C, 0.002);
+  });
+  it('plenum: accounts for multiple collars on top and sides', () => {
+    const D = 100, C = 80, n = 5;
+    const m = build('plenum', { D, C, nTop: 2, nFront: 2, nRight: 1 });
+    close(area(m), 2 * (600 + 600) * 300 + 600 * 600 - n * PI * D * D / 4 + n * PI * D * C, 0.002);
+    expect(m.openings).toHaveLength(1 + n);
+    expect(flanges(m, 32)).toEqual([]);
+    expect(getFitting('plenum')!.validate({ ...defaults(getFitting('plenum')!), W: 10, nTop: 3 })).toBe('err.collar');
+  });
+  it('plenum: makes a 200 by 120 ellipse on a 130 mm wide top face', () => {
+    const m = build('plenum', { W: 130, L: 1120, H: 300, D: 200, C: 100 });
+    const rim = m.openings[1];
+    const span = (axis: 0 | 1) => Math.max(...rim.map((p) => p[axis])) - Math.min(...rim.map((p) => p[axis]));
+    expect(span(0)).toBeCloseTo(120, 6);
+    expect(span(1)).toBeCloseTo(200, 6);
+    const a = 100, b = 60;
+    const circumference = Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)));
+    const want = 2 * (130 + 1120) * 300 + 130 * 1120 - PI * a * b + circumference * 100;
+    close(area(m), want, 0.003);
+    expect(getFitting('plenum')!.validate({ ...defaults(getFitting('plenum')!), W: 130, L: 1120 })).toBeNull();
+  });
+  it('spreads two top collars along the long side of a narrow plenum', () => {
+    const m = build('plenum', { W: 130, L: 1200, H: 300, D: 200, nTop: 2 });
+    const center = (rim: number[][], axis: number) => (Math.max(...rim.map(p => p[axis])) + Math.min(...rim.map(p => p[axis]))) / 2;
+    expect(center(m.openings[1], 0)).toBeCloseTo(65);
+    expect(center(m.openings[2], 0)).toBeCloseTo(65);
+    expect(center(m.openings[1], 1)).toBeCloseTo(300);
+    expect(center(m.openings[2], 1)).toBeCloseTo(900);
+    expect(Math.max(...m.openings[1].map(p => p[0])) - Math.min(...m.openings[1].map(p => p[0]))).toBeCloseTo(120);
   });
   it('FCU box: four closed faces, the collar face with n holes, and n collars', () => {
     const [W, H, L, n, D, C] = [1000, 250, 400, 3, 200, 100];
@@ -123,11 +159,10 @@ describe('overall sizes', () => {
 });
 
 describe('flanges on round collars', () => {
-  it('make a concentric ring around a round neck', () => {
+  it('do not add flanges to either end of the round tap', () => {
     const m = build('tapRound');
-    const ring = flanges(m, 30)[1];
-    close(area({ ...m, panels: [ring] }), PI * (130 ** 2 - 100 ** 2), 0.003);
-    close(flangeLength(m), 2 * (300 + 200) + PI * 200, 0.002);
+    expect(flanges(m, 30)).toEqual([]);
+    expect(flangeLength(m)).toBe(0);
   });
   it('are left off the FCU box collars; only the FCU side has one', () => {
     const m = build('fcuBox', { nL: 1, nR: 2 });
@@ -151,7 +186,7 @@ describe('drawing', () => {
     expect(edges([front])).toHaveLength(8);
   });
   it('rejects collars larger than their face and a cross neck wider than the branches', () => {
-    expect(getFitting('plenum')!.validate({ ...defaults(getFitting('plenum')!), D: 600 })).toBe('err.collar');
+    expect(getFitting('plenum')!.validate({ ...defaults(getFitting('plenum')!), D: 600 })).toBeNull();
     expect(getFitting('fcuBox')!.validate({ ...defaults(getFitting('fcuBox')!), n: 5 })).toBe('err.collar');
     expect(getFitting('fcuBox')!.validate({ ...defaults(getFitting('fcuBox')!), n: 2.5 })).toBe('err.range');
     expect(getFitting('fcuBox')!.validate({ ...defaults(getFitting('fcuBox')!), nL: 1 })).toBeNull();
@@ -164,7 +199,7 @@ describe('drawing', () => {
 
 describe('round flange rim', () => {
   it('stays a true circle, so overall sizes come out round', () => {
-    // Foot 300 x 200 and neck D 200, both with 30 mm flanges: 260 deep either way.
-    expect(project(build('tapRound'), 'side', 30).w).toBeCloseTo(260, 6);
+    // Neither opening adds a flange to the foot or neck.
+    expect(project(build('tapRound'), 'side', 30).w).toBeCloseTo(450, 6);
   });
 });

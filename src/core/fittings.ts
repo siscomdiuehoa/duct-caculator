@@ -62,7 +62,7 @@ function plate(name: string, loop: Vec3[]): Panel {
  * A rectangle (centre cx, cy, size w x h) and a concentric circle sampled at the same angles,
  * with the rectangle corners included, so the two can be joined by straight rungs.
  */
-function rectRound(cx: number, cy: number, w: number, h: number, r: number) {
+function rectRound(cx: number, cy: number, w: number, h: number, r: number, ry = r) {
   const tau = Math.PI * 2;
   const norm = (t: number) => ((t % tau) + tau) % tau;
   const cornerAngles = [Math.atan2(h, w), Math.atan2(h, -w), Math.atan2(-h, -w), Math.atan2(-h, w)].map(norm);
@@ -75,7 +75,7 @@ function rectRound(cx: number, cy: number, w: number, h: number, r: number) {
     const d = Math.min(Math.abs(c) > 1e-12 ? w / 2 / Math.abs(c) : Infinity, Math.abs(s) > 1e-12 ? h / 2 / Math.abs(s) : Infinity);
     return [cx + d * c, cy + d * s];
   });
-  const circ = angles.map((t): P2 => [cx + r * Math.cos(t), cy + r * Math.sin(t)]);
+  const circ = angles.map((t): P2 => [cx + r * Math.cos(t), cy + ry * Math.sin(t)]);
   const find = (t: number) => angles.findIndex((u) => Math.abs(u - t) < 1e-9);
   return { rect, circ, corners: cornerAngles.map(find), quadrants: [0, 1, 2, 3].map((q) => find((q * tau) / 4)) };
 }
@@ -194,36 +194,40 @@ const reducer: FittingDef = {
 
 const elbow90: FittingDef = {
   id: 'elbow90',
-  params: [size('W', 500), size('H', 300), size('R', 225), length('A', 60), length('B', 60)],
+  params: [size('W', 500), size('H', 300), size('R', 250), { key: 'angle', def: 90, min: 1, max: 180, step: 1, kind: 'angle' }, length('A', 60), length('B', 60)],
   validate(p) {
     return baseValidate(this.params, p);
   },
-  build({ W, H, R, A, B }): Model {
+  build({ W, H, R, A, B, angle = 90 }): Model {
     // Inlet A faces -X at x = 0. After a straight of length A the duct bends upwards in the
     // X-Z plane around (A, y, H + R), then runs straight for B to outlet B, which faces +Z.
     // H lies in the bend plane; W is the depth along Y.
     const zc = H + R;
-    const top = zc + B;
+    const theta = angle * Math.PI / 180;
     const at = (r: number, t: number, y: number): Vec3 => [A + r * Math.sin(t), y, zc - r * Math.cos(t)];
     const ring = (f: (r: number, y: number) => Vec3): Vec3[] => [f(R + H, 0), f(R, 0), f(R, W), f(R + H, W)];
     const inlet = ring((r, y) => [0, y, zc - r]);
-    const outlet = ring((r, y) => [A + r, y, top]);
+    const end = (r: number, y: number): Vec3 => {
+      const p = at(r, theta, y);
+      return [p[0] + B * Math.cos(theta), y, p[2] + B * Math.sin(theta)];
+    };
+    const outlet = ring(end);
     const sections: Vec3[][] = [inlet];
     for (let i = 0; i <= ARC_STEPS; i++) {
-      const t = (Math.PI / 2) * (i / ARC_STEPS);
+      const t = theta * (i / ARC_STEPS);
       sections.push(ring((r, y) => at(r, t, y)));
     }
     sections.push(outlet);
-    const xm = A + R + H / 2;
+    const middle = end(R + H / 2, 0);
     const dims: Dim[] = [
       { a: [0, 0, H / 2], b: [0, W, H / 2], label: 'W A' },
       { a: [0, 0, 0], b: [0, 0, H], label: 'H A' },
-      { a: [xm, 0, top], b: [xm, W, top], label: 'W B' },
-      { a: [A + R, 0, top], b: [A + R + H, 0, top], label: 'H B' },
-      { a: [A, 0, zc], b: at(R, Math.PI / 4, 0), label: 'R' },
+      { a: middle, b: [middle[0], W, middle[2]], label: 'W B' },
+      { a: end(R, 0), b: end(R + H, 0), label: 'H B' },
+      { a: [A, 0, zc], b: at(R, theta / 2, 0), label: 'R' },
     ];
     if (A > 0) dims.push({ a: [0, 0, 0], b: [A, 0, 0], label: 'A' });
-    if (B > 0) dims.push({ a: [A + R + H, 0, zc], b: [A + R + H, 0, top], label: 'B' });
+    if (B > 0) dims.push({ a: at(R + H, theta, 0), b: end(R + H, 0), label: 'B' });
     return {
       panels: sweep(sections, ['front', 'inner', 'back', 'outer']),
       dims,
@@ -327,26 +331,33 @@ const squareElbow: FittingDef = {
 
 const tapRound: FittingDef = {
   id: 'tapRound',
-  params: [size('W', 300), size('H', 200), named(size('D', 200), 'p.D'), named(size('L', 150), 'p.tapL')],
+  params: [size('W', 600), size('H', 450), named(size('D', 315), 'p.D'), named(size('L', 320), 'p.tapTotal'), named(length('base', 50), 'p.tapBase'), named(length('neck', 50), 'p.tapNeck')],
   validate(p) {
-    return baseValidate(this.params, p);
+    return baseValidate(this.params, p) ?? (p.base + p.neck >= p.L ? 'err.tapLengths' : null);
   },
-  build({ W, H, D, L }): Model {
-    // Rectangular foot on the duct at z = 0, rising to a round neck of diameter D at z = L.
+  build({ W, H, D, L, base = 0, neck: neckLength = 0 }): Model {
+    // L is the total length: rectangular foot, transition, and straight round collar.
     const r = D / 2;
-    const { rect: base, circ, corners } = rectRound(W / 2, H / 2, W, H, r);
-    const foot = base.map(([x, y]): Vec3 => [x, y, 0]);
-    const neck = circ.map(([x, y]): Vec3 => [x, y, L]);
+    const { rect: baseLoop, circ, corners, quadrants } = rectRound(W / 2, H / 2, W, H, r);
+    const foot = baseLoop.map(([x, y]): Vec3 => [x, y, base]);
+    const neck = circ.map(([x, y]): Vec3 => [x, y, L - neckLength]);
+    const end = circ.map(([x, y]): Vec3 => [x, y, L]);
+    const panels: Panel[] = [{ name: 'transition', a: closed(foot), b: closed(neck), rungs: corners }];
+    if (base > 0) panels.push(...sweep([rect(0, W, 0, H, 0), rect(0, W, 0, H, base)], SIDES));
+    if (neckLength > 0) panels.push(collar('neck', neck, end, quadrants));
     const dims: Dim[] = [
       { a: [0, 0, 0], b: [W, 0, 0], label: 'W' },
       { a: [W, 0, 0], b: [W, H, 0], label: 'H' },
       { a: [W / 2 - r, H / 2, L], b: [W / 2 + r, H / 2, L], label: 'D' },
       { a: [0, 0, 0], b: [0, 0, L], label: 'L' },
     ];
+    if (base > 0) dims.push({ a: [0, 0, 0], b: [0, 0, base], label: 'Đế' });
+    if (neckLength > 0) dims.push({ a: [W / 2 + r, H / 2, L - neckLength], b: [W / 2 + r, H / 2, L], label: 'Cổ' });
     return {
-      panels: [{ name: 'transition', a: closed(foot), b: closed(neck), rungs: corners }],
+      panels,
       dims,
-      openings: [rect(0, W, 0, H, 0), neck],
+      openings: [rect(0, W, 0, H, 0), end],
+      bare: [0, 1],
     };
   },
 };
@@ -410,31 +421,65 @@ const plenum: FittingDef = {
     named(size('W', 600), 'p.boxW'),
     named(size('L', 600), 'p.boxL'),
     named(size('H', 300), 'p.boxH'),
-    named(size('D', 250), 'p.D'),
+    named(count('nTop', 1, 8, 0), 'p.nTop'),
+    named(count('nFront', 0, 8, 0), 'p.nFront'),
+    named(count('nBack', 0, 8, 0), 'p.nBack'),
+    named(count('nLeft', 0, 8, 0), 'p.nLeft'),
+    named(count('nRight', 0, 8, 0), 'p.nRight'),
+    named(size('D', 200), 'p.D'),
     named(length('C', 100), 'p.C'),
   ],
   validate(p) {
-    return baseValidate(this.params, p) ?? (p.D >= Math.min(p.W, p.L) ? 'err.collar' : null);
+    const error = baseValidate(this.params, p);
+    if (error) return error;
+    const fits = (n: number, width: number, height: number) => n === 0 || (Math.max(width, height) / n > 10 && Math.min(width, height) > 10);
+    return fits(p.nTop, p.W, p.L) && fits(p.nFront, p.W, p.H) && fits(p.nBack, p.W, p.H)
+      && fits(p.nLeft, p.L, p.H) && fits(p.nRight, p.L, p.H) ? null : 'err.collar';
   },
-  build({ W, L, H, D, C }): Model {
-    // Open bottom W x L for the diffuser, round collar on the top plate.
-    const r = D / 2;
-    const { rect: edge, circ, quadrants } = rectRound(W / 2, L / 2, W, L, r);
-    const at = (pts: P2[], z: number) => pts.map(([x, y]): Vec3 => [x, y, z]);
-    const panels: Panel[] = [
-      ...sweep([rect(0, W, 0, L, 0), rect(0, W, 0, L, H)], SIDES),
-      holedPlate('top', at(edge, H), at(circ, H)),
-    ];
-    if (C > 0) panels.push(collar('collar', at(circ, H), at(circ, H + C), quadrants));
+  build({ W, L, H, D, C, nTop = 1, nFront = 0, nBack = 0, nLeft = 0, nRight = 0 }): Model {
+    // Bottom is open for the diffuser; round collars are equally spaced on each face.
+    const panels: Panel[] = [];
+    const openings: Vec3[][] = [rect(0, W, 0, L, 0)];
+    let collarDims: Dim[] = [];
+    const face = (name: string, n: number, width: number, height: number, place: (u: number, v: number, out: number) => Vec3) => {
+      if (!n) {
+        panels.push(quad(name, place(0, 0, 0), place(width, 0, 0), place(width, height, 0), place(0, height, 0)));
+        return;
+      }
+      const alongWidth = width >= height;
+      const cellW = alongWidth ? width / n : width;
+      const cellH = alongWidth ? height : height / n;
+      for (let i = 0; i < n; i++) {
+        const axisU = D < cellW ? D : cellW - 10;
+        const axisV = D < cellH ? D : cellH - 10;
+        const centerU = alongWidth ? cellW * (i + 0.5) : width / 2;
+        const centerV = alongWidth ? height / 2 : cellH * (i + 0.5);
+        const { rect: edge, circ, quadrants } = rectRound(centerU, centerV, cellW, cellH, axisU / 2, axisV / 2);
+        const at = (pts: P2[], out: number) => pts.map(([u, v]) => place(u, v, out));
+        panels.push(holedPlate(`${name}-${i}`, at(edge, 0), at(circ, 0)));
+        if (C > 0) panels.push(collar(`${name}-collar-${i}`, at(circ, 0), at(circ, C), quadrants));
+        openings.push(at(circ, C));
+        if (!collarDims.length) {
+          const rim = at(circ, C);
+          collarDims = [{ a: rim[quadrants[0]], b: rim[quadrants[2]], label: axisU === axisV ? 'D' : 'D1' }];
+          if (axisU !== axisV) collarDims.push({ a: rim[quadrants[1]], b: rim[quadrants[3]], label: 'D2' });
+          if (C > 0) collarDims.push({ a: at(circ, 0)[quadrants[0]], b: rim[quadrants[0]], label: 'C' });
+        }
+      }
+    };
+    face('top', nTop, W, L, (u, v, out) => [u, v, H + out]);
+    face('front', nFront, W, H, (u, v, out) => [u, -out, v]);
+    face('back', nBack, W, H, (u, v, out) => [u, L + out, v]);
+    face('left', nLeft, L, H, (u, v, out) => [-out, u, v]);
+    face('right', nRight, L, H, (u, v, out) => [W + out, u, v]);
     const dims: Dim[] = [
       { a: [0, 0, 0], b: [W, 0, 0], label: 'W' },
       { a: [W, 0, 0], b: [W, L, 0], label: 'L' },
       { a: [0, 0, 0], b: [0, 0, H], label: 'H' },
-      { a: [W / 2 - r, L / 2, H + C], b: [W / 2 + r, L / 2, H + C], label: 'D' },
     ];
-    if (C > 0) dims.push({ a: [W / 2 + r, L / 2, H], b: [W / 2 + r, L / 2, H + C], label: 'C' });
+    dims.push(...collarDims);
     // The bottom takes the diffuser and the collar takes flexible duct, so neither has a flange.
-    return { panels, dims, openings: [rect(0, W, 0, L, 0), at(circ, H + C)], bare: [0, 1] };
+    return { panels, dims, openings, bare: openings.map((_, i) => i) };
   },
 };
 

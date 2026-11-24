@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { toDxf } from './dxf';
 import { FITTINGS, defaults, getFitting } from './fittings';
-import { fromJson, newDesign, toCsv, toJson } from './io';
+import { fromJson, lowPressureThickness, newDesign, toCsv, toJson, totals } from './io';
 import { area, flangeLength, flanges, weightKg } from './measure';
 import { project } from './project';
 
@@ -11,7 +11,30 @@ const build = (id: string, p?: Record<string, number>) => {
 };
 const close = (got: number, want: number, tol: number) => expect(Math.abs(got - want) / want).toBeLessThan(tol);
 
+describe('DW/144 low-pressure sheet thickness', () => {
+  it.each([[400, 0.58], [401, 0.75], [1000, 0.75], [1001, 0.95], [2500, 0.95], [2501, 1.15], [3000, 1.15], [3001, null]])
+  ('selects the thickness for a %i mm longest side', (width, expected) => {
+    expect(lowPressureThickness('straight', { W: width, H: 300, L: 1000 })).toBe(expected);
+  });
+  it('uses the largest rectangular opening of a reducer', () => {
+    expect(lowPressureThickness('reducer', { W1: 300, H1: 200, W2: 1100, H2: 300, L: 500 })).toBe(0.95);
+  });
+  it('leaves unsupported equipment boxes for manual selection', () => {
+    expect(lowPressureThickness('fcuBox', defaults(getFitting('fcuBox')!))).toBeNull();
+  });
+});
+
 describe('area and weight', () => {
+  it('calculates quantity, seam allowance and flat flange area', () => {
+    const d = { ...newDesign('straight'), quantity: 2, includeExtras: true, flangeKgPerM: 0.5, seamAllowanceMm: 20, seamLengthM: 4 };
+    const result = totals(d);
+    expect(result.flangeArea).toBeCloseTo(0.195584);
+    expect(result.sheetArea).toBeCloseTo(3.155584);
+    expect(result.flangeLength).toBeCloseTo(5.6);
+    expect(result.weight).toBeCloseTo(3.155584 * 0.00058 * 7850);
+    expect(toCsv(d, 'Straight')).toContain('"quantity",2');
+    expect(totals({ ...d, includeExtras: false }).sheetArea).toBeCloseTo(2.8);
+  });
   it('straight 400x300x1000', () => {
     expect(area(build('straight'))).toBeCloseTo(1_400_000, 6);
     expect(weightKg(build('straight'), 0.8, 7850)).toBeCloseTo(8.792, 6);
@@ -24,11 +47,20 @@ describe('area and weight', () => {
     // Two cheeks (straight + quarter annulus + straight), then inner and outer wraps 500 wide.
     const cheek = 60 * 300 + (Math.PI / 4) * (525 ** 2 - 225 ** 2) + 60 * 300;
     const want = 2 * cheek + 500 * (60 + (Math.PI / 2) * 225 + 60) + 500 * (60 + (Math.PI / 2) * 525 + 60);
-    close(area(build('elbow90')), want, 0.001);
+    close(area(build('elbow90', { R: 225 })), want, 0.001);
   });
   it('elbow without straights is the plain quarter bend', () => {
     const want = 2 * (Math.PI / 4) * (525 ** 2 - 225 ** 2) + 500 * (Math.PI / 2) * (225 + 525);
-    close(area(build('elbow90', { A: 0, B: 0 })), want, 0.001);
+    close(area(build('elbow90', { R: 225, A: 0, B: 0 })), want, 0.001);
+  });
+  it('calculates a 45 degree elbow and its outlet correctly', () => {
+    const theta = Math.PI / 4;
+    const want = 2 * (120 * 300 + theta / 2 * (525 ** 2 - 225 ** 2)) + 500 * (240 + theta * (225 + 525));
+    const model = build('elbow90', { R: 225, angle: 45 });
+    close(area(model), want, 0.001);
+    expect(flangeLength(model)).toBeCloseTo(3200, 6);
+    expect(model.openings[1][0][0] - model.openings[1][1][0]).toBeCloseTo(300 * Math.sin(theta), 6);
+    expect(model.openings[1][0][2] - model.openings[1][1][2]).toBeCloseTo(-300 * Math.cos(theta), 6);
   });
   it('tee 400x300x1000 with 300x250 branch', () => {
     expect(area(build('tee'))).toBeCloseTo(1_400_000 - 300 * 300 + 2 * 250 * 300 + 2 * 250 * 300, 6);
@@ -88,7 +120,7 @@ describe('projection', () => {
     expect(project(m, 'plan')).toMatchObject({ w: 400, h: 300 });
   });
   it('elbow 500x300 R225 with 60 straights measures 585 x 500 x 585', () => {
-    const m = build('elbow90');
+    const m = build('elbow90', { R: 225 });
     expect(project(m, 'front')).toMatchObject({ w: 585, h: 585 });
     expect(project(m, 'side')).toMatchObject({ w: 500, h: 585 });
     expect(project(m, 'plan')).toMatchObject({ w: 585, h: 500 });
@@ -98,7 +130,7 @@ describe('projection', () => {
   });
   it('elbow views carry the size of each opening', () => {
     const dims = (v: 'front' | 'side' | 'plan') =>
-      Object.fromEntries(project(build('elbow90'), v).dims.map((d) => [d.label, Math.round(d.value * 10) / 10]));
+      Object.fromEntries(project(build('elbow90', { R: 225 }), v).dims.map((d) => [d.label, Math.round(d.value * 10) / 10]));
     expect(dims('front')).toEqual({ X: 585, Z: 585, 'H A': 300, 'H B': 300, R: 225, A: 60, B: 60 });
     expect(dims('side')).toEqual({ Z: 585, 'W A': 500, 'H A': 300, 'W B': 500, B: 60 });
     expect(dims('plan')).toEqual({ X: 585, 'W A': 500, 'W B': 500, 'H B': 300, A: 60 });
@@ -152,11 +184,27 @@ describe('json and csv', () => {
   it('reads files saved before flanges existed', () => {
     const d = JSON.parse(toJson(newDesign('straight')));
     delete d.flange;
-    expect(fromJson(JSON.stringify(d)).flange).toBe(30);
+    expect(fromJson(JSON.stringify(d)).flange).toBe(32);
     d.flange = -1;
     expect(() => fromJson(JSON.stringify(d))).toThrow();
   });
+  it('opens legacy radius elbows at 90 degrees', () => {
+    const d = JSON.parse(toJson(newDesign('elbow90')));
+    delete d.params.angle;
+    expect(fromJson(JSON.stringify(d)).params.angle).toBe(90);
+  });
+  it('opens a legacy plenum with one top collar', () => {
+    const d = JSON.parse(toJson(newDesign('plenum')));
+    for (const k of ['nTop', 'nFront', 'nBack', 'nLeft', 'nRight']) delete d.params[k];
+    expect(fromJson(JSON.stringify(d)).params).toMatchObject({ nTop: 1, nFront: 0, nBack: 0, nLeft: 0, nRight: 0 });
+  });
+  it('opens a legacy round tap without adding straight sections', () => {
+    const d = JSON.parse(toJson(newDesign('tapRound')));
+    delete d.params.base;
+    delete d.params.neck;
+    expect(fromJson(JSON.stringify(d)).params).toMatchObject({ base: 0, neck: 0 });
+  });
   it('writes weight to csv', () => {
-    expect(toCsv(newDesign('straight'), 'Straight')).toContain('"weight (kg)",8.792');
+    expect(toCsv(newDesign('straight'), 'Straight')).toContain('"weight (kg)",6.374');
   });
 });

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toDxf } from '../core/dxf';
 import { defaults, getFitting } from '../core/fittings';
-import { DEFAULT_FLANGE, newDesign, toCsv, UNITS, type Design, type Unit } from '../core/io';
-import { area, flangeLength, weightKg } from '../core/measure';
+import { DEFAULT_FLANGE, lowPressureThickness, newDesign, toCsv, totals, UNITS, type Design, type Unit } from '../core/io';
+import { flangeLength } from '../core/measure';
 import type { Model } from '../core/types';
 import { translate, type Lang } from '../i18n';
 import { FittingPicker } from './FittingPicker';
@@ -127,6 +127,10 @@ export function App() {
   useEffect(() => void store('unit', unit), [unit]);
 
   const fitting = getFitting(design.fitting)!;
+  const automaticThickness = lowPressureThickness(design.fitting, design.params);
+  const effectiveDesign = { ...design, quantity: design.quantity ?? 1, includeExtras: design.includeExtras ?? false,
+    flangeKgPerM: design.flangeKgPerM ?? 0, seamAllowanceMm: design.seamAllowanceMm ?? 0, seamLengthM: design.seamLengthM ?? 0,
+    thickness: automaticThickness ?? design.thickness };
   const problem =
     fitting.validate(design.params) ??
     (design.thickness > 0 && design.density > 0 && design.flange >= 0 && design.flange <= 200 ? null : 'err.range');
@@ -134,21 +138,29 @@ export function App() {
   // Keep showing the last buildable shape while the input is invalid.
   const last = useRef<{ model: Model; design: Design } | null>(null);
   const current = useMemo(() => {
-    if (!problem) last.current = { model: fitting.build(design.params), design };
+    if (!problem) last.current = { model: fitting.build(design.params), design: effectiveDesign };
     return last.current!;
   }, [design, fitting, problem]);
   const { model } = current;
 
   const factor = UNITS[unit];
   const dimText = (label: string, mm: number) => `${label} ${trim(mm / factor, 2)}`;
-  const sqm = area(model) / 1e6;
-  const kg = weightKg(model, current.design.thickness, current.design.density);
+  const result = totals(current.design);
+  const sqm = result.sheetArea;
+  const kg = result.weight;
   const flange = current.design.flange;
 
-  const setParam = (key: string, v: number) => setDesign((d) => ({ ...d, params: { ...d.params, [key]: v } }));
+  const setParam = (key: string, v: number) => setDesign((d) => ({
+    ...d,
+    params: { ...d.params, [key]: v, ...(d.fitting === 'elbow90' && key === 'W' ? { R: v / 2 } : {}) },
+  }));
   const open = (d: Design) => {
     // Library entries saved before flanges existed have no flange width.
-    setDesign({ ...d, flange: Number.isFinite(d.flange) ? d.flange : DEFAULT_FLANGE });
+    const legacy = d.fitting === 'elbow90' || d.fitting === 'plenum' || d.fitting === 'tapRound';
+    const priorTap: Record<string, number> = d.fitting === 'tapRound' ? { base: 0, neck: 0 } : {};
+    const params = legacy ? { ...defaults(getFitting(d.fitting)!), ...priorTap, ...d.params } : d.params;
+    const extras = newDesign(d.fitting);
+    setDesign({ ...extras, ...d, params, quantity: Number.isInteger(d.quantity) && d.quantity > 0 ? d.quantity : 1, flange: Number.isFinite(d.flange) ? d.flange : DEFAULT_FLANGE });
     setPreset('iso');
     setFrame((n) => n + 1);
   };
@@ -300,9 +312,9 @@ export function App() {
                     key={`${design.fitting}.${p.key}`}
                     label={t(p.label ?? `p.${p.key}`)}
                     value={design.params[p.key]}
-                    factor={p.kind === 'count' ? 1 : factor}
-                    step={p.kind === 'count' ? 1 : STEP[unit]}
-                    suffix={p.kind === 'count' ? '' : unit}
+                    factor={p.kind ? 1 : factor}
+                    step={p.kind ? p.step : STEP[unit]}
+                    suffix={p.kind === 'angle' ? '°' : p.kind === 'count' ? '' : unit}
                     min={p.min}
                     max={p.max}
                     errText={t('err.number')}
@@ -310,46 +322,27 @@ export function App() {
                   />
                 ))}
               </div>
-
-              <h2>{t('material')}</h2>
-              <div className="grid">
-                <Field
-                  label={t('thickness')}
-                  value={design.thickness}
-                  factor={1}
-                  step={0.1}
-                  suffix="mm"
-                  min={0.01}
-                  max={50}
-                  errText={t('err.number')}
-                  onChange={(v) => setDesign((d) => ({ ...d, thickness: v }))}
-                />
-                <Field
-                  label={t('density')}
-                  value={design.density}
-                  factor={1}
-                  step={10}
-                  suffix="kg/m³"
-                  min={1}
-                  max={30000}
-                  errText={t('err.number')}
-                  onChange={(v) => setDesign((d) => ({ ...d, density: v }))}
-                />
-                <Field
-                  label={t('flange')}
-                  value={design.flange}
-                  factor={1}
-                  step={5}
-                  suffix="mm"
-                  min={0}
-                  max={200}
-                  errText={t('err.number')}
-                  onChange={(v) => setDesign((d) => ({ ...d, flange: v }))}
-                />
-              </div>
-              <p className="muted">{t('flange.note')}</p>
+              {design.fitting === 'plenum' && <p className="muted">{t('plenum.ellipse')}</p>}
 
               <h2>{t('result')}</h2>
+              <label className="field quantity-field">
+                <span>{t('quantity')}</span>
+                <div className="input"><input type="number" min="1" step="1" value={design.quantity ?? 1} onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (Number.isInteger(value) && value >= 1) setDesign((d) => ({ ...d, quantity: value }));
+                }} /></div>
+              </label>
+              <label className="extras-check">
+                <input type="checkbox" checked={design.includeExtras ?? false} onChange={(e) => setDesign((d) => ({ ...d, includeExtras: e.target.checked }))} />
+                <span>{t('extras.include')}</span>
+              </label>
+              {design.includeExtras && <>
+                <div className="grid">
+                  <Field label={t('extras.seamWidth')} value={design.seamAllowanceMm ?? 0} factor={1} step={1} suffix="mm" min={0} max={1000} errText={t('err.number')} onChange={(v) => setDesign((d) => ({ ...d, seamAllowanceMm: v }))} />
+                  <Field label={t('extras.seamLength')} value={design.seamLengthM ?? 0} factor={1} step={0.1} suffix="m" min={0} max={100000} errText={t('err.number')} onChange={(v) => setDesign((d) => ({ ...d, seamLengthM: v }))} />
+                </div>
+                <p className="muted">{t('extras.note')}</p>
+              </>}
               <dl className="result">
                 <div>
                   <dt>{t('area')}</dt>
@@ -363,16 +356,17 @@ export function App() {
                     {kg.toFixed(2)} <em>kg</em>
                   </dd>
                 </div>
+                {design.includeExtras && result.flangeArea > 0 && <div><dt>{t('extras.flangeArea')}</dt><dd>{result.flangeArea.toFixed(3)} <em>m²</em></dd></div>}
                 {flange > 0 && flangeLength(model) > 0 && (
                   <div className="wide">
                     <dt>{t('flange.length')}</dt>
                     <dd>
-                      {(flangeLength(model) / 1e3).toFixed(2)} <em>m</em>
+                      {(flangeLength(model) * current.design.quantity / 1e3).toFixed(2)} <em>m</em>
                     </dd>
                   </div>
                 )}
               </dl>
-              <p className="muted">{t('note')}</p>
+              <p className="muted">{t(design.includeExtras ? 'extras.resultNote' : 'note')}</p>
 
               <h2>{t('export')}</h2>
               <div className="exports">
@@ -383,6 +377,49 @@ export function App() {
                   {t('ex.csv')}
                 </button>
               </div>
+
+              <h2>{t('material')}</h2>
+              <div className="grid">
+                {automaticThickness !== null ? <label className="field">
+                  <span>{t('thickness')}</span>
+                  <div className="input"><input value={trim(automaticThickness)} readOnly aria-label={t('thickness')} /><em>mm</em></div>
+                </label> : <Field
+                  label={t('thickness')}
+                  value={design.thickness}
+                  factor={1}
+                  step={0.1}
+                  suffix="mm"
+                  min={0.01}
+                  max={50}
+                  errText={t('err.number')}
+                  onChange={(v) => setDesign((d) => ({ ...d, thickness: v }))}
+                />}
+                <Field
+                  label={t('density')}
+                  value={design.density}
+                  factor={1}
+                  step={10}
+                  suffix="kg/m³"
+                  min={1}
+                  max={30000}
+                  errText={t('err.number')}
+                  onChange={(v) => setDesign((d) => ({ ...d, density: v }))}
+                />
+                {design.fitting !== 'tapRound' && <Field
+                  label={t('flange')}
+                  value={design.flange}
+                  factor={1}
+                  step={5}
+                  suffix="mm"
+                  min={0}
+                  max={200}
+                  errText={t('err.number')}
+                  onChange={(v) => setDesign((d) => ({ ...d, flange: v }))}
+                />}
+              </div>
+              <p className="muted">{automaticThickness !== null ? t('thickness.auto') : t('thickness.manual')}</p>
+              {design.fitting !== 'tapRound' && <p className="muted">{t('flange.note')}</p>}
+
             </>
           )}
         </section>

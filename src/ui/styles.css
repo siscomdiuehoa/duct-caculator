@@ -193,6 +193,9 @@ select {
   background: var(--cad-bg);
   touch-action: none;
 }
+.viewer-canvas {
+  background: linear-gradient(180deg, #172d4a 0%, #10213a 100%);
+}
 .viewer-canvas canvas {
   display: block;
   position: absolute;
@@ -216,7 +219,7 @@ select {
   position: absolute;
   left: 0;
   top: 0;
-  background: var(--cad-bg);
+  background: #10233c;
   border: 1px solid var(--cad-dim);
   color: var(--cad-dim);
   border-radius: 6px;
@@ -422,7 +425,7 @@ select {
   gap: 8px;
 }
 .exports .primary {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .save-row {
@@ -521,6 +524,86 @@ select {
   display: grid;
 }
 
+/* A restrained, compact specification panel for workshop use. */
+.tabs.seg {
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #d5dadd;
+  border-radius: 0;
+}
+.tabs.seg button {
+  min-height: 42px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  color: #68737a;
+}
+.tabs.seg button.on {
+  background: transparent;
+  border-bottom-color: #1f5d70;
+  color: #1f5d70;
+  box-shadow: none;
+}
+.panel.card {
+  border-color: #d5dadd;
+  border-radius: 4px;
+  background: #fff;
+}
+.panel h2 {
+  color: #535f66;
+  letter-spacing: .04em;
+  border-bottom: 1px solid #e2e6e8;
+  padding-bottom: 7px;
+}
+.panel .row {
+  border-bottom: 1px solid #e2e6e8;
+}
+.panel .row h2 { border: 0; padding: 0; }
+.panel .row .ghost { color: #1f5d70; font-size: 13px; }
+.panel .grid { gap: 12px 10px; }
+.panel .field span { color: #303a40; }
+.panel .field .input {
+  border-color: #cbd2d6;
+  border-radius: 4px;
+}
+.panel .field .input:focus-within { border-color: #1f5d70; box-shadow: 0 0 0 1px #1f5d70; }
+.panel .field.bad .input { border-color: var(--warn); }
+.panel .field .input button {
+  width: 27px;
+  min-height: 38px;
+  background: #f5f6f7;
+  color: #647078;
+  font-size: 15px;
+}
+.panel .field .input button:hover { background: #e8edef; color: #1f5d70; }
+.panel .field input { padding: 8px 3px; }
+.panel .field em { color: #68737a; }
+.panel .picker-button {
+  border-color: #cbd2d6;
+  border-radius: 4px;
+  background: #fff;
+  color: #28363d;
+}
+.panel .picker-button:hover { border-color: #1f5d70; }
+.panel .result { display: block; }
+.panel .quantity-field { display: block; max-width: 150px; margin: 10px 0; }
+.extras-check { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-size: 13px; }
+.extras-check input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.panel .result div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  background: transparent;
+  border-bottom: 1px solid #edf0f1;
+  border-radius: 0;
+}
+.panel .result dt { color: #536068; font-size: 13px; }
+.panel .result dd { color: #202a30; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.panel .result em { font-size: 12px; }
+
 @media (max-width: 999px) {
   .brand span,
   .check span {
@@ -533,12 +616,13 @@ select {
 }
 @media (min-width: 1000px) {
   .layout[data-tab='views'] .tabs .tab-params {
-    background: var(--card);
-    color: var(--accent);
+    background: transparent;
+    border-bottom-color: #1f5d70;
+    color: #1f5d70;
     font-weight: 600;
   }
   .layout {
-    grid-template-columns: 360px minmax(0, 1fr) 320px;
+    grid-template-columns: clamp(360px, 30vw, 560px) minmax(0, 1fr) 350px;
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas: 'tabs viewer views' 'panel viewer views';
     height: calc(100vh - 61px);
@@ -561,6 +645,8 @@ select {
     position: static;
     height: auto;
   }
+  .viewer-bar { flex-wrap: wrap; }
+  .viewer-bar .seg { flex-wrap: wrap; }
   .views,
   .layout[data-tab='views'] .views {
     grid-area: views;

@@ -39,7 +39,7 @@ export interface ParamDef {
   max: number;
   step: number;
   /** A whole count rather than a length, so it is never converted between units. */
-  kind?: 'count';
+  kind?: 'count' | 'angle';
   /** i18n key of the field label when it differs from p.<key>. */
   label?: string;
 }
