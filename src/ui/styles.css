@@ -1,5 +1,7 @@
 :root {
-  --bg: #f1f3f0;
+  /* Page background is plain white; --soft tints controls so they still stand out on it. */
+  --bg: #ffffff;
+  --soft: #f1f3f0;
   --card: #ffffff;
   --ink: #18211f;
   --muted: #5d6b67;
@@ -16,22 +18,8 @@
   --cad-dim: #00ff00;
   --cad-text: #ffffff;
   --radius: 12px;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121716;
-    --card: #1b2221;
-    --ink: #e8eeeb;
-    --muted: #9aa8a3;
-    --line: #2e3836;
-    --accent: #4fb3a8;
-    --accent-soft: #1f3331;
-    --warn: #f2a59f;
-    --warn-soft: #3a211f;
-    --dim: #fb923c;
-  }
 }
 * {
   box-sizing: border-box;
@@ -147,7 +135,7 @@ select {
 .seg {
   display: flex;
   gap: 4px;
-  background: var(--bg);
+  background: var(--soft);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 3px;
@@ -327,7 +315,7 @@ select {
   color: var(--muted);
 }
 .picker-list li.active {
-  background: var(--bg);
+  background: var(--soft);
 }
 .picker-list li.current {
   background: var(--accent-soft);
@@ -379,7 +367,7 @@ select {
 .field .input button {
   border: 0;
   border-radius: 0;
-  background: var(--bg);
+  background: var(--soft);
   width: 34px;
   padding: 0;
   font-size: 17px;
